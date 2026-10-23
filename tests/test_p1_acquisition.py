@@ -92,3 +92,12 @@ def test_landing_has_no_label_leak(tmp_path):
     landing.write_landing(df, tmp_path, lag_months=1)  # re-run must not duplicate
     total = sum(len(pd.read_csv(p)) for p in (tmp_path / "applications").rglob("part.csv"))
     assert total == 12
+
+
+def test_kaggle_executable_prefers_the_venv(tmp_path, monkeypatch):
+    fake_python = tmp_path / "bin" / "python"
+    fake_python.parent.mkdir()
+    fake_python.write_text("")
+    (tmp_path / "bin" / "kaggle").write_text("")
+    monkeypatch.setattr(download.sys, "executable", str(fake_python))
+    assert download.kaggle_executable() == str(tmp_path / "bin" / "kaggle")

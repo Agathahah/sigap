@@ -10,7 +10,9 @@ Run:  make data-download              (Base.csv only, ~200 MB)
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -24,6 +26,21 @@ def kaggle_download_cmd(dataset: str, file_name: str, dest: Path) -> list[str]:
     safely and cannot be interpreted by a shell.
     """
     return ["kaggle", "datasets", "download", "-d", dataset, "-f", file_name, "-p", str(dest)]
+
+
+def kaggle_executable() -> str:
+    """Path of the Kaggle CLI: the one installed in the project venv, else the one on PATH.
+
+    `make` runs `.venv/bin/python` without activating the venv, so `.venv/bin` is not on PATH and a bare
+    "kaggle" would not be found.
+    """
+    local = Path(sys.executable).with_name("kaggle")
+    if local.exists():
+        return str(local)
+    found = shutil.which("kaggle")
+    if found:
+        return found
+    raise SystemExit("Kaggle CLI not found. Run `make setup` (it installs kaggle into .venv).")
 
 
 def unzip_if_needed(dest: Path) -> list[Path]:
@@ -42,6 +59,7 @@ def main() -> None:
     config.RAW.mkdir(parents=True, exist_ok=True)
     for name in [f.strip() for f in args.files.split(",") if f.strip()]:
         cmd = kaggle_download_cmd(config.KAGGLE_DATASET, name, config.RAW)
+        cmd[0] = kaggle_executable()
         print("$", " ".join(cmd))
         subprocess.run(cmd, check=True)  # noqa: S603 (no shell, fixed executable)
     for p in unzip_if_needed(config.RAW):
