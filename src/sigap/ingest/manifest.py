@@ -1,67 +1,64 @@
-"""Phase 1 · Data acquisition: a manifest proves which exact files every result came from.
+"""Data lineage for raw downloads: checksums, row counts and the licence in one manifest.
 
-Run:  make data-manifest   (after make data-download)
-      make data-verify     (any time; CI-style check that raw files were not changed)
+Every downstream result can be traced back to the exact raw files it was built from. `verify` fails loudly
+when a raw file changes after the manifest was written.
 
-Why it matters (interview): "How do you know your model was trained on the data you think it was?"
-A manifest with SHA-256 checksums, row counts and the licence note is the cheapest lineage there is.
+Run:  make data-manifest LICENCE="..."   (after make data-download)
+      make data-verify
 """
 
 from __future__ import annotations
 
-import hashlib  # noqa: F401
+import hashlib
 import json
-from datetime import UTC, datetime  # noqa: F401
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def sha256_file(path: Path, chunk_size: int = 1 << 20) -> str:
-    """Phase 1 · TODO(Agatha): return the hex SHA-256 of a file, reading it in chunks.
-
-    Read in chunks (1 MB) so a 200 MB CSV never has to fit in memory at once.
-    Hint: hashlib.sha256(); h.update(chunk); h.hexdigest().
-    Test: tests/test_p1_acquisition.py::test_sha256_matches_hashlib
-    """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.manifest.sha256_file")
+    """Hex SHA-256 of a file, read in chunks so large CSVs never sit in memory at once."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(chunk_size):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def count_rows(path: Path) -> int:
-    """Phase 1 · TODO(Agatha): number of data rows in a CSV (header excluded).
-
-    Count lines without loading the file into pandas. An empty file has 0 rows.
-    Test: tests/test_p1_acquisition.py::test_count_rows_excludes_header
-    """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.manifest.count_rows")
+    """Number of data rows in a CSV (header excluded). Streams the file; an empty file has 0 rows."""
+    with open(path, "rb") as f:
+        lines = sum(1 for _ in f)
+    return max(lines - 1, 0)
 
 
 def build_manifest(files: list[Path], source: str, licence: str) -> dict:
-    """Phase 1 · TODO(Agatha): describe downloaded files.
-
-    Return:
-        {
-          "source": source,                 # e.g. "kaggle:sgpjesus/bank-account-fraud-dataset-neurips-2022"
-          "licence": licence,               # copied from the dataset page / `make data-licence`
-          "created_at": ISO-8601 UTC string,
-          "files": [{"name": file name only, "bytes": int, "rows": int, "sha256": str}, ...]  # sorted by name
-        }
-    Test: tests/test_p1_acquisition.py::test_manifest_fields
-    """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.manifest.build_manifest")
+    """Describe raw files: source, licence, creation time and per-file bytes, rows and checksum."""
+    entries = [
+        {"name": p.name, "bytes": p.stat().st_size, "rows": count_rows(p), "sha256": sha256_file(p)}
+        for p in sorted(files, key=lambda p: p.name)
+    ]
+    return {
+        "source": source,
+        "licence": licence,
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "files": entries,
+    }
 
 
 def verify_manifest(manifest: dict, base_dir: Path) -> list[str]:
-    """Phase 1 · TODO(Agatha): compare files on disk with the manifest.
-
-    Return a list of human-readable problems, empty when everything matches:
-      - "missing: <name>"           file listed but not on disk
-      - "changed: <name>"           checksum differs
-    Test: tests/test_p1_acquisition.py::test_verify_detects_change_and_missing
-    """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.manifest.verify_manifest")
+    """Problems found when comparing the manifest with files on disk ("missing: x", "changed: x")."""
+    problems = []
+    for entry in manifest["files"]:
+        path = base_dir / entry["name"]
+        if not path.exists():
+            problems.append(f"missing: {entry['name']}")
+        elif sha256_file(path) != entry["sha256"]:
+            problems.append(f"changed: {entry['name']}")
+    return problems
 
 
 def main() -> None:
-    """CLI: `python -m sigap.ingest.manifest build|verify`. Provided, uses your functions above."""
+    """CLI: `python -m sigap.ingest.manifest build|verify`."""
     import argparse
 
     from sigap import config
@@ -78,12 +75,15 @@ def main() -> None:
         if not args.licence:
             raise SystemExit('Pass the licence you verified: make data-manifest LICENCE="..."')
         m = build_manifest(files, f"kaggle:{config.KAGGLE_DATASET}", args.licence)
-        path.write_text(json.dumps(m, indent=2))
-        print(f"Wrote {path} ({len(files)} files)")
+        path.write_text(json.dumps(m, indent=2), encoding="utf-8")
+        for f in m["files"]:
+            print(f"{f['name']}: {f['rows']:,} rows, sha256 {f['sha256'][:12]}…")
+        print(f"-> {path}")
     else:
-        problems = verify_manifest(json.loads(path.read_text()), config.RAW)
-        print("OK: raw files match the manifest" if not problems else "\n".join(problems))
-        raise SystemExit(1 if problems else 0)
+        problems = verify_manifest(json.loads(path.read_text(encoding="utf-8")), config.RAW)
+        if problems:
+            raise SystemExit("Manifest check FAILED:\n  " + "\n  ".join(problems))
+        print("OK: raw files match the manifest")
 
 
 if __name__ == "__main__":

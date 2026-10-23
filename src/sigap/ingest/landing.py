@@ -1,16 +1,14 @@
-"""Phase 1 · Data acquisition: turn one Kaggle CSV into the feeds a real bank would receive.
+"""Turn one Kaggle CSV into the feeds a bank actually receives: monthly drops and late labels.
 
-A bank does not get "Base.csv". It gets applications every day, and fraud labels weeks later
-(after chargebacks and investigations). This module simulates that, so the rest of SIGAP has to
-deal with what production deals with: monthly drops and late labels.
+A bank does not receive a finished dataset. Applications arrive continuously; fraud labels arrive weeks
+later, after chargebacks and investigations. This job simulates both, so every later stage works with
+what production works with.
 
-Output (data/landing/):
-    applications/month=00/part.csv ... month=07/part.csv   # NO label column
-    labels/available_month=02/part.csv ...                # application_id, is_fraud, month, available_month
+Output (data/landing/<variant>/):
+    applications/month=00/part.csv ... month=07/part.csv   no label column
+    labels/available_month=02/part.csv ...                application_id, is_fraud, month, available_month
 
 Run:  make data-land
-Story for interview: "Labels arrive two months late, so at month 6 the newest label I can
-train on is month 4. My features and my monitoring both respect that."
 """
 
 from __future__ import annotations
@@ -23,42 +21,55 @@ from sigap import config
 
 
 def add_application_id(df: pd.DataFrame, variant: str) -> pd.DataFrame:
-    """Phase 1 · TODO(Agatha): add a deterministic `application_id` as the FIRST column.
+    """Copy of `df` with a deterministic `application_id` as the first column, e.g. "variant_i-0000003".
 
-    Format: f"{variant_slug}-{row_number:07d}", where variant_slug = variant.lower() with spaces
-    replaced by "_" ("Variant I" -> "variant_i") and row_number is the 0-based position in the file.
-    Deterministic = running the job twice gives the same ids (idempotent loads, safe re-runs).
-    Do not modify the input DataFrame (return a copy).
-    Test: tests/test_p1_acquisition.py::test_application_id_deterministic_and_unique
+    The id is the variant slug plus the 0-based row position, so re-running the job yields the same ids
+    and loads stay idempotent.
     """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.landing.add_application_id")
+    slug = variant.lower().replace(" ", "_")
+    out = df.reset_index(drop=True).copy()
+    out.insert(0, "application_id", [f"{slug}-{i:07d}" for i in range(len(out))])
+    return out
 
 
 def make_label_feed(df: pd.DataFrame, lag_months: int = config.LABEL_LAG_MONTHS) -> pd.DataFrame:
-    """Phase 1 · TODO(Agatha): build the late-arriving label feed.
-
-    Input has columns application_id, month, fraud_bool. Return a DataFrame with exactly:
-        application_id, is_fraud (int 0/1), month, available_month (= month + lag_months)
-    Test: tests/test_p1_acquisition.py::test_label_feed_is_lagged
-    """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.landing.make_label_feed")
+    """Late-arriving labels: application_id, is_fraud (0/1), month, available_month = month + lag."""
+    return pd.DataFrame(
+        {
+            "application_id": df["application_id"].to_numpy(),
+            "is_fraud": df[config.RAW_LABEL].astype(int).to_numpy(),
+            "month": df[config.MONTH].astype(int).to_numpy(),
+            "available_month": (df[config.MONTH].astype(int) + lag_months).to_numpy(),
+        }
+    )
 
 
 def write_landing(df: pd.DataFrame, landing_dir: Path, lag_months: int = config.LABEL_LAG_MONTHS) -> dict[str, int]:
-    """Phase 1 · TODO(Agatha): write monthly application drops and the label feed.
+    """Write monthly application drops (without the label) and the lagged label feed.
 
-    `df` already has application_id. Write:
-      landing_dir/applications/month=MM/part.csv   all columns EXCEPT fraud_bool, one folder per month
-      landing_dir/labels/available_month=MM/part.csv  from make_label_feed(), one folder per available_month
-    MM is zero-padded to 2 digits. Overwrite existing files (re-runs must not duplicate rows).
-    Return {"applications": total rows written, "labels": total label rows written}.
-    Test: tests/test_p1_acquisition.py::test_landing_has_no_label_leak
+    Files are overwritten, never appended, so re-running a month does not duplicate rows.
+    Returns the number of application rows and label rows written.
     """
-    raise NotImplementedError("TODO(Agatha) phase 1: sigap.ingest.landing.write_landing")
+    landing_dir = Path(landing_dir)
+    apps = df.drop(columns=[config.RAW_LABEL])
+    n_apps = 0
+    for month, part in apps.groupby(config.MONTH, sort=True):
+        folder = landing_dir / "applications" / f"month={int(month):02d}"
+        folder.mkdir(parents=True, exist_ok=True)
+        part.to_csv(folder / "part.csv", index=False)
+        n_apps += len(part)
+    labels = make_label_feed(df, lag_months)
+    n_labels = 0
+    for avail, part in labels.groupby("available_month", sort=True):
+        folder = landing_dir / "labels" / f"available_month={int(avail):02d}"
+        folder.mkdir(parents=True, exist_ok=True)
+        part.to_csv(folder / "part.csv", index=False)
+        n_labels += len(part)
+    return {"applications": n_apps, "labels": n_labels}
 
 
 def main() -> None:
-    """CLI: read data/raw/<VARIANT>.csv, add ids, write landing. Provided."""
+    """CLI: read data/raw/<VARIANT>.csv, add ids, write the landing feeds."""
     src = config.RAW / f"{config.VARIANT}.csv"
     if not src.exists():
         raise SystemExit(f"{src} not found. Run `make data-download` first.")
