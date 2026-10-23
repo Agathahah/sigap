@@ -1,0 +1,17 @@
+-- Phase 3 · warehouse DDL (Postgres 16 + pgvector). TODO(Agatha): write it from docs/01_ERD.md.
+-- Idempotent: CREATE ... IF NOT EXISTS, so `make gold` can run every month.
+--
+-- CREATE SCHEMA IF NOT EXISTS gold;
+-- CREATE SCHEMA IF NOT EXISTS ops;
+--
+-- gold.dim_month(month_key PK, month_index, label_complete BOOLEAN)
+-- gold.dim_channel(channel_key PK, source, payment_type, UNIQUE(source, payment_type))
+-- gold.dim_device(device_key PK, device_os, keep_alive_session, email_is_free, UNIQUE(...))
+-- gold.dim_profile(profile_key PK, age_band, income_decile, employment_status, housing_status, UNIQUE(...))
+-- gold.fact_application(application_id PK, month_key FK, channel_key FK, device_key FK, profile_key FK,
+--                       ...measures..., is_fraud SMALLINT NULL)
+-- ops.decision_log(...)        phase 7
+-- ops.monitoring_monthly(...)  phase 8
+-- ops.policy_chunks(id, source, page, text, embedding vector(<dim of your embedding model>))  phase 9
+--
+-- Add indexes for the questions in sql/analysis (e.g. fact_application(month_key)).

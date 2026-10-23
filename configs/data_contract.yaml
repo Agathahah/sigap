@@ -1,0 +1,51 @@
+# Data contract for one BAF application, checked at the door (phase 2) and used to build the
+# explicit Spark schema (phase 3). Source of truth for types: the BAF datasheet (feedzai/bank-account-fraud,
+# documents/datasheet.pdf) + YOUR EDA. Every range you add must be explainable ("from datasheet" or
+# "observed max in months 0-4 was X, added 20% headroom").
+#
+# Keys per column: type (int|float|str), nullable (default false), min, max, allowed
+# TODO(Agatha) phase 2: fill min/max for every numeric column. Three are done as examples.
+
+columns:
+  application_id: {type: str}
+  income: {type: float, min: 0, max: 1}                  # example: decile as a fraction (datasheet)
+  name_email_similarity: {type: float, min: 0, max: 1}   # example
+  prev_address_months_count: {type: int}
+  current_address_months_count: {type: int}
+  customer_age: {type: int, min: 10, max: 100}           # example: rounded to decades
+  days_since_request: {type: float}
+  intended_balcon_amount: {type: float}
+  payment_type: {type: str, allowed: [AA, AB, AC, AD, AE]}
+  zip_count_4w: {type: int}
+  velocity_6h: {type: float}
+  velocity_24h: {type: float}
+  velocity_4w: {type: float}
+  bank_branch_count_8w: {type: int}
+  date_of_birth_distinct_emails_4w: {type: int}
+  employment_status: {type: str, allowed: [CA, CB, CC, CD, CE, CF, CG]}
+  credit_risk_score: {type: int}
+  email_is_free: {type: int}
+  housing_status: {type: str, allowed: [BA, BB, BC, BD, BE, BF, BG]}
+  phone_home_valid: {type: int}
+  phone_mobile_valid: {type: int}
+  bank_months_count: {type: int}
+  has_other_cards: {type: int}
+  proposed_credit_limit: {type: float}
+  foreign_request: {type: int}
+  source: {type: str, allowed: [INTERNET, TELEAPP]}
+  session_length_in_minutes: {type: float}
+  device_os: {type: str, allowed: [windows, linux, macintosh, x11, other]}
+  keep_alive_session: {type: int}
+  device_distinct_emails_8w: {type: int}
+  device_fraud_count: {type: int}
+  month: {type: int, min: 0, max: 7}
+
+# Sentinels: BAF encodes "no data" as -1 (or any negative value) in some columns.
+# rule: eq_-1 (value == -1) or lt_0 (value < 0). Silver turns them into NULL + <col>_missing.
+# TODO(Agatha) phase 2: find ALL sentinel columns in the datasheet and confirm each in your EDA
+# (hint: there are six; two are given). Write the evidence in docs/03_EDA_FINDINGS.md.
+sentinels:
+  bank_months_count: eq_-1
+  intended_balcon_amount: lt_0
+
+protected_attributes: [customer_age, income, employment_status]  # never sent to the LLM; used for fairness checks

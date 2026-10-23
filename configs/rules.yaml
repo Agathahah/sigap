@@ -1,0 +1,11 @@
+# Rule baseline (phase 4): what a fraud team would run before any model.
+# Each rule: name, when (pandas query on silver columns), rationale (why a fraud analyst would write it).
+# TODO(Agatha) phase 4: write 5-8 rules from your EDA findings, measure them with `make rules`, tune, log changes.
+
+rules:
+  - name: device_seen_with_fraud
+    when: "device_fraud_count > 0"
+    rationale: "Device already linked to a confirmed fraud case."
+  - name: application_burst
+    when: "velocity_6h > 3 * velocity_4w"
+    rationale: "Applications in the last 6h are 3x the 4-week hourly normal (possible bot or fraud ring)."

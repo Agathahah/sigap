@@ -1,0 +1,12 @@
+# Phase 8b · operational alert thresholds (read by sigap.ops.sync together with business.yaml).
+# Write the reason next to every number, like business.yaml. These are decisions, not facts.
+
+psi_alert: 0.25               # same as the drift "alert" level in phase 8 (rule of thumb, see RUNBOOK)
+queue_tolerance: 0.0          # 0.10 = only alert when reviews exceed capacity by more than 10%
+quarantine_rate_alert: 0.02   # TODO(Agatha) phase 8b: set from the quarantine rates you saw in phase 2
+# review_capacity_per_day comes from configs/business.yaml (phase 6), never duplicated here
+
+runbook_url: https://github.com/Agathahah/sigap/blob/main/docs/RUNBOOK.md   # alert messages link here
+
+channels:
+  primary: whatsapp           # ADR 0007; fallback: email (Gmail node in n8n), same API, same messages

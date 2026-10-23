@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sigap"
+version = "0.1.0"
+description = "SIGAP: fraud decisioning for digital account opening (Spark, Postgres, MLflow, FastAPI) with an analyst copilot (RAG, MCP, LangGraph)"
+requires-python = ">=3.11"
+authors = [{ name = "Agatha Silalahi" }]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "p1: phase 1 data acquisition",
+  "p2: phase 2 data quality",
+  "p3: phase 3 spark pipeline",
+  "p4: phase 4 rules and features",
+  "p5: phase 5 model metrics",
+  "p6: phase 6 decision policy",
+  "p7: phase 7 serving",
+  "p8: phase 8 monitoring",
+  "p8b: phase 8b ops automation (n8n, WhatsApp, human-in-the-loop)",
+  "p9: phase 9 copilot",
+  "p9b: phase 9b local open-weight model vs API",
+  "spark: needs Java 17 + PySpark (slower)",
+]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101", "B008"]

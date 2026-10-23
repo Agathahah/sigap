@@ -1,0 +1,20 @@
+# Runs lint + the tests of every phase listed in tests/PHASES_DONE (e.g. "p1 or p2").
+# Add a phase there in the same PR that makes its tests green, so CI protects what you finished.
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - run: pip install -r requirements-dev.txt && pip install -e .
+      - run: ruff check src tests scripts dags
+      - name: tests of finished phases
+        run: |
+          PHASES="$(grep -v '^#' tests/PHASES_DONE | tr -d '\n')"
+          if [ -z "$PHASES" ]; then echo "No phase finished yet"; exit 0; fi
+          pytest -m "$PHASES" -v

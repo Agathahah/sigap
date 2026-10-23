@@ -1,0 +1,9 @@
+# Release gate (phase 5). Decide these BEFORE you look at test results, and explain each in the model card.
+min:
+  test_tpr_at_5fpr: 0.40
+  test_pr_auc: 0.10
+  test_fpr_ratio_age: 0.0    # raise after writing ADR 0005 (fairness), never lower after seeing results
+max:
+  test_fpr: 0.06
+  test_ece: 0.05
+  score_psi_test_vs_train: 0.25

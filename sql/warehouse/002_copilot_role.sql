@@ -1,0 +1,6 @@
+-- Phase 9 · read-only role for the copilot (ADR 0003). TODO(Agatha).
+-- CREATE ROLE sigap_copilot LOGIN PASSWORD :'copilot_password';   -- password from .env, never in git
+-- GRANT USAGE ON SCHEMA gold, ops TO sigap_copilot;
+-- GRANT SELECT ON <only the tables/views it needs> TO sigap_copilot;
+-- Create a VIEW without protected attributes (customer_age, income, employment_status) and grant that instead.
+-- Test it: connect as sigap_copilot and try an INSERT -> must fail.

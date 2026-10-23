@@ -1,0 +1,41 @@
+# Local infrastructure. `make db-up` starts Postgres 16 with pgvector (phase 3 warehouse + phase 9 vectors).
+# `docker compose --profile dashboard up -d` also starts Metabase (phase 8 dashboard) on http://localhost:3000
+# `make n8n-up` (profile ops) starts n8n (phase 8b) on http://localhost:5678
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file: .env
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+  metabase:
+    image: metabase/metabase:latest
+    profiles: [dashboard]
+    ports: ["3000:3000"]
+    depends_on: [postgres]
+  n8n:
+    # Pinned to the version checked on 22 Oct 2026. If the tag is missing, use :stable and write the version
+    # you got (n8n --version) in ADR 0007.
+    image: docker.n8n.io/n8nio/n8n:2.44.6
+    profiles: [ops]
+    ports: ["5678:5678"]
+    environment:
+      GENERIC_TIMEZONE: Asia/Jakarta
+      TZ: Asia/Jakarta
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}          # encrypts credentials (WhatsApp token) in the volume
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}   # use your Mac's LAN IP so your phone can reach it
+      N8N_SECURE_COOKIE: "false"                         # local http only; never on a public server
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"              # workflows read the 3 SIGAP_* values below via $env
+      SIGAP_API_URL: ${SIGAP_API_URL_FOR_N8N:-http://host.docker.internal:8001}
+      SIGAP_ANALYST_WHATSAPP: ${SIGAP_ANALYST_WHATSAPP}  # your number, from .env (never in the workflow JSON)
+      SIGAP_WA_PHONE_NUMBER_ID: ${SIGAP_WA_PHONE_NUMBER_ID}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/backup/workflows
+volumes:
+  pgdata:
+  n8n_data:

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest==9.1.1
+ruff==0.17.1
+nbstripout==0.9.1
+# phase 9 graph tests run offline with a fake LLM; these two are light (no provider SDKs, no torch)
+langgraph==1.2.16
+langchain-core==1.6.12

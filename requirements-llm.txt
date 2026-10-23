@@ -1,0 +1,10 @@
+# Phase 9 only (copilot). Install when you get there: pip install -r requirements-llm.txt
+mcp==2.3.0
+langgraph==1.2.16
+langchain-core==1.6.12
+langchain-anthropic==1.7.6
+langchain-ollama==1.1.0          # phase 9b: local Hermes through Ollama
+# langgraph-checkpoint-postgres==3.2.0   # Could: conversation audit trail in Postgres
+pgvector==0.5.1
+sentence-transformers==6.2.0
+pypdf==6.21.2
