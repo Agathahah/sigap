@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: sigap
-Version: 0.1.0
-Summary: SIGAP: fraud decisioning for digital account opening (Spark, Postgres, MLflow, FastAPI) with an analyst copilot (RAG, MCP, LangGraph)
-Author: Agatha Silalahi
-Requires-Python: >=3.11

@@ -51,3 +51,23 @@ def test_first_reason_wins():
 def test_missing_column_rejects_batch():
     with pytest.raises(ContractError):
         validate_batch(_df().drop(columns=["payment_type"]), CONTRACT)
+
+
+def test_eda_frame_keeps_training_months_and_joins_labels(tmp_path, monkeypatch):
+    from sigap import config
+    from sigap.quality import eda
+
+    variant = tmp_path / "landing" / "base"
+    for m in range(6):
+        d = variant / "applications" / f"month={m:02d}"
+        d.mkdir(parents=True)
+        pd.DataFrame({"application_id": [f"a{m}"], "month": [m], "income": [0.5]}).to_csv(d / "part.csv", index=False)
+        lab = variant / "labels" / f"available_month={m + 2:02d}"
+        lab.mkdir(parents=True)
+        pd.DataFrame(
+            {"application_id": [f"a{m}"], "is_fraud": [m % 2], "month": [m], "available_month": [m + 2]}
+        ).to_csv(lab / "part.csv", index=False)
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    out = eda.build_eda_frame(variant, months=(0, 1, 2, 3, 4))
+    assert sorted(out["month"]) == [0, 1, 2, 3, 4]
+    assert out.set_index("application_id")["is_fraud"].to_dict() == {"a0": 0, "a1": 1, "a2": 0, "a3": 1, "a4": 0}

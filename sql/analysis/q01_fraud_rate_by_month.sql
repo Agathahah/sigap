@@ -1,5 +1,11 @@
--- Phase 2 · volume and fraud
--- Question: Applications, frauds and fraud rate per month.
--- Business use: Baseline prevalence and its trend; dashboard tile.
--- Rules: months 0-4 only during EDA (test months 6-7 stay unseen). Write the query below.
-
+-- Volume and fraud
+-- Question: Applications, frauds and fraud rate per month (training months 0-4).
+-- Business use: baseline prevalence and its trend; dashboard tile.
+SELECT
+    month,
+    COUNT(*)                              AS applications,
+    SUM(is_fraud)::int                    AS frauds,
+    ROUND(100.0 * AVG(is_fraud), 3)       AS fraud_rate_pct
+FROM eda.applications
+GROUP BY month
+ORDER BY month;

@@ -1,51 +1,54 @@
-# Data contract for one BAF application, checked at the door (phase 2) and used to build the
-# explicit Spark schema (phase 3). Source of truth for types: the BAF datasheet (feedzai/bank-account-fraud,
-# documents/datasheet.pdf) + YOUR EDA. Every range you add must be explainable ("from datasheet" or
-# "observed max in months 0-4 was X, added 20% headroom").
+# Data contract for one BAF application, checked at the door (quality stage) and used to build the explicit
+# Spark schema (pipeline stage).
+#
+# Ranges: the value range observed in the BAF Base file (all 1,000,000 rows, checked 27 Oct 2026), which matches
+# the feature descriptions in the BAF datasheet (feedzai/bank-account-fraud, documents/datasheet.pdf).
+# A future drop outside these ranges means the source changed and is quarantined for review.
 #
 # Keys per column: type (int|float|str), nullable (default false), min, max, allowed
-# TODO(Agatha) phase 2: fill min/max for every numeric column. Three are done as examples.
 
 columns:
   application_id: {type: str}
-  income: {type: float, min: 0, max: 1}                  # example: decile as a fraction (datasheet)
-  name_email_similarity: {type: float, min: 0, max: 1}   # example
-  prev_address_months_count: {type: int}
-  current_address_months_count: {type: int}
-  customer_age: {type: int, min: 10, max: 100}           # example: rounded to decades
-  days_since_request: {type: float}
-  intended_balcon_amount: {type: float}
+  income: {type: float, min: 0.1, max: 0.9}                       # income decile as a fraction
+  name_email_similarity: {type: float, min: 0, max: 1}
+  prev_address_months_count: {type: int, min: -1, max: 383}       # -1 = no previous address (sentinel)
+  current_address_months_count: {type: int, min: -1, max: 428}    # -1 = unknown (sentinel)
+  customer_age: {type: int, min: 10, max: 90}                     # rounded to decades
+  days_since_request: {type: float, min: 0, max: 79}
+  intended_balcon_amount: {type: float, min: -16, max: 113}       # negative = no amount given (sentinel)
   payment_type: {type: str, allowed: [AA, AB, AC, AD, AE]}
-  zip_count_4w: {type: int}
-  velocity_6h: {type: float}
-  velocity_24h: {type: float}
-  velocity_4w: {type: float}
-  bank_branch_count_8w: {type: int}
-  date_of_birth_distinct_emails_4w: {type: int}
+  zip_count_4w: {type: int, min: 1, max: 6700}
+  velocity_6h: {type: float, min: -171, max: 16716}               # 44 slightly negative values exist in the source
+  velocity_24h: {type: float, min: 1300, max: 9507}
+  velocity_4w: {type: float, min: 2825, max: 6995}
+  bank_branch_count_8w: {type: int, min: 0, max: 2385}
+  date_of_birth_distinct_emails_4w: {type: int, min: 0, max: 39}
   employment_status: {type: str, allowed: [CA, CB, CC, CD, CE, CF, CG]}
-  credit_risk_score: {type: int}
-  email_is_free: {type: int}
+  credit_risk_score: {type: int, min: -170, max: 389}             # internal score; negative values are valid
+  email_is_free: {type: int, allowed: [0, 1]}
   housing_status: {type: str, allowed: [BA, BB, BC, BD, BE, BF, BG]}
-  phone_home_valid: {type: int}
-  phone_mobile_valid: {type: int}
-  bank_months_count: {type: int}
-  has_other_cards: {type: int}
-  proposed_credit_limit: {type: float}
-  foreign_request: {type: int}
+  phone_home_valid: {type: int, allowed: [0, 1]}
+  phone_mobile_valid: {type: int, allowed: [0, 1]}
+  bank_months_count: {type: int, min: -1, max: 32}                # -1 = no previous bank account (sentinel)
+  has_other_cards: {type: int, allowed: [0, 1]}
+  proposed_credit_limit: {type: float, min: 190, max: 2100}
+  foreign_request: {type: int, allowed: [0, 1]}
   source: {type: str, allowed: [INTERNET, TELEAPP]}
-  session_length_in_minutes: {type: float}
+  session_length_in_minutes: {type: float, min: -1, max: 86}      # -1 = not recorded (sentinel)
   device_os: {type: str, allowed: [windows, linux, macintosh, x11, other]}
-  keep_alive_session: {type: int}
-  device_distinct_emails_8w: {type: int}
-  device_fraud_count: {type: int}
+  keep_alive_session: {type: int, allowed: [0, 1]}
+  device_distinct_emails_8w: {type: int, min: -1, max: 2}         # -1 = not recorded (sentinel)
+  device_fraud_count: {type: int, min: 0, max: 0}                 # constant 0 in Base: carries no information
   month: {type: int, min: 0, max: 7}
 
-# Sentinels: BAF encodes "no data" as -1 (or any negative value) in some columns.
-# rule: eq_-1 (value == -1) or lt_0 (value < 0). Silver turns them into NULL + <col>_missing.
-# TODO(Agatha) phase 2: find ALL sentinel columns in the datasheet and confirm each in your EDA
-# (hint: there are six; two are given). Write the evidence in docs/03_EDA_FINDINGS.md.
+# Missing values encoded as -1 or any negative value. The silver stage turns them into NULL plus a
+# <column>_missing flag, because "missing" is itself a fraud signal in this data.
 sentinels:
-  bank_months_count: eq_-1
+  prev_address_months_count: eq_-1
+  current_address_months_count: eq_-1
   intended_balcon_amount: lt_0
+  bank_months_count: eq_-1
+  session_length_in_minutes: eq_-1
+  device_distinct_emails_8w: eq_-1
 
 protected_attributes: [customer_age, income, employment_status]  # never sent to the LLM; used for fairness checks

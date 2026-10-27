@@ -52,6 +52,10 @@ synth: ## synthetic BAF-shaped data for CI / public demo (never for results)
 # ---------- phase 2 · quality + EDA ----------
 quality: ## validate every monthly drop against configs/data_contract.yaml
 	$(PY) -m sigap.quality.contract
+eda-load: ## training months 0-4 + their labels -> Postgres table eda.applications
+	$(PY) -m sigap.quality.eda load
+eda-sql: ## run sql/analysis/q01-q07 on eda.applications (Q=q03 for one), print and save to reports/eda/
+	$(PY) -m sigap.quality.eda run $(Q)
 eda: ## JupyterLab for notebooks/01_eda.ipynb
 	.venv/bin/jupyter lab notebooks/
 

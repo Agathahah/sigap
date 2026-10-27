@@ -1,23 +1,28 @@
-"""Phase 2 · Data quality: a data contract checked at the door, before data enters bronze.
+"""Data contract checked at the door, before a monthly drop enters the pipeline.
 
-configs/data_contract.yaml says what a valid application looks like (columns, types, ranges,
-allowed categories). Each monthly drop is validated on arrival:
-  - valid rows continue to bronze
-  - invalid rows go to data/quarantine/ WITH the reason (never silently dropped)
-  - a report (counts per rule) goes to reports/quality/ so the trend is visible month to month
+`configs/data_contract.yaml` describes a valid application: columns, types, ranges and allowed categories.
+Each monthly drop is validated on arrival:
+  - valid rows continue to `data/landing_valid/<variant>/month=MM/part.csv`
+  - invalid rows go to `data/quarantine/<variant>/month=MM.csv` with the reason, never silently dropped
+  - counts per rule go to `reports/quality/<variant>.csv`, so the quarantine rate can be followed month to month
 
-Run:  make quality            (validates every landing month of the current variant)
-Interview line: "Bad rows are quarantined with a reason and counted. If quarantine jumps from
-0.1% to 5% in one month, that is an incident with the source system, not a modelling problem."
+A jump in the quarantine rate is a source-system incident to raise with the data owner, not a modelling problem.
+
+Run:  make quality
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import yaml
+
+from sigap import config
+
+NUMERIC_TYPES = {"int", "float"}
 
 
 class ContractError(Exception):
@@ -25,41 +30,83 @@ class ContractError(Exception):
 
 
 def load_contract(path: Path) -> dict[str, Any]:
-    """Load a contract YAML. Provided."""
+    """Load a contract YAML."""
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def validate_batch(df: pd.DataFrame, contract: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
-    """Phase 2 · TODO(Agatha): split a batch into (valid, quarantine, report).
+    """Split a batch into (valid rows, quarantined rows with `_reason`, report of counts).
 
-    contract format (see configs/data_contract.yaml):
-        columns:
-          <name>: {type: int|float|str, nullable: false, min: <num>, max: <num>, allowed: [..]}
-    Rules, checked in this order for every row:
-      1. Any contract column missing from df -> raise ContractError (whole batch rejected).
-      2. Value null and nullable is false           -> reason "<col>: null"
-      3. Numeric value < min or > max (if given)    -> reason "<col>: out of range"
-      4. Value not in allowed (if given)            -> reason "<col>: not allowed"
-    A row may break several rules; keep the FIRST reason found, scanning columns in contract order.
-    Return:
-      valid       rows with no reason (same columns as df)
-      quarantine  rows with a reason, plus a column `_reason`
-      report      {"rows": n, "valid": n_valid, "quarantined": n_bad, "<reason>": count, ...}
-    Extra columns that are not in the contract pass through untouched.
-    Tests: tests/test_p2_quality.py
+    Checks per contract column, in contract order: null (when not nullable), wrong type (numeric columns),
+    out of range (min/max), not allowed (category list). A row keeps the first reason found.
+    Columns that are not in the contract pass through untouched. A missing contract column rejects the batch.
     """
-    raise NotImplementedError("TODO(Agatha) phase 2: sigap.quality.contract.validate_batch")
+    columns = contract["columns"]
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise ContractError(f"missing columns: {', '.join(missing)}")
+
+    reason = pd.Series(pd.NA, index=df.index, dtype="object")
+
+    def flag(mask: pd.Series, text: str) -> None:
+        nonlocal reason
+        reason = reason.mask(reason.isna() & mask.fillna(False).astype(bool), text)
+
+    for col, rule in columns.items():
+        values = df[col]
+        is_null = values.isna()
+        if not rule.get("nullable", False):
+            flag(is_null, f"{col}: null")
+        if rule.get("type") in NUMERIC_TYPES:
+            numbers = pd.to_numeric(values, errors="coerce")
+            flag(numbers.isna() & ~is_null, f"{col}: wrong type")
+            if "min" in rule:
+                flag(numbers < rule["min"], f"{col}: out of range")
+            if "max" in rule:
+                flag(numbers > rule["max"], f"{col}: out of range")
+        if "allowed" in rule:
+            flag(~values.isin(rule["allowed"]) & ~is_null, f"{col}: not allowed")
+
+    bad = reason.notna()
+    valid = df.loc[~bad].copy()
+    quarantine = df.loc[bad].assign(_reason=reason[bad])
+    report: dict[str, int] = {"rows": len(df), "valid": len(valid), "quarantined": int(bad.sum())}
+    report.update(Counter(reason[bad].tolist()))
+    return valid, quarantine, report
 
 
 def main() -> None:
-    """Phase 2 · TODO(Agatha): validate every landing/applications/month=XX/part.csv.
+    """Validate every landing month of the current variant and write valid rows, quarantine and a report."""
+    contract = load_contract(config.CONFIGS / "data_contract.yaml")
+    slug = config.VARIANT.lower().replace(" ", "_")
+    src = config.LANDING / slug / "applications"
+    months = sorted(src.glob("month=*/part.csv"))
+    if not months:
+        raise SystemExit(f"No landing files in {src}. Run `make data-land` first.")
 
-    For each month: validate_batch -> write valid rows to data/landing_valid/<variant>/month=XX/part.csv,
-    quarantine to data/quarantine/<variant>/month=XX.csv, and append the report (with the month) to
-    reports/quality/<variant>.csv. Print one line per month: month, rows, quarantined, top reason.
-    """
-    raise NotImplementedError("TODO(Agatha) phase 2: quality.contract.main")
+    rows = []
+    for path in months:
+        mm = path.parent.name.split("=")[1]
+        valid, quarantine, report = validate_batch(pd.read_csv(path), contract)
+        out = config.DATA / "landing_valid" / slug / f"month={mm}"
+        out.mkdir(parents=True, exist_ok=True)
+        valid.to_csv(out / "part.csv", index=False)
+        qdir = config.QUARANTINE / slug
+        qdir.mkdir(parents=True, exist_ok=True)
+        quarantine.to_csv(qdir / f"month={mm}.csv", index=False)
+        rows.append({"month": int(mm), **report})
+        reasons = {k: v for k, v in report.items() if k not in ("rows", "valid", "quarantined")}
+        top = max(reasons, key=reasons.get) if reasons else "-"
+        rate = report["quarantined"] / report["rows"] if report["rows"] else 0
+        bad = report["quarantined"]
+        print(f"month {mm}: {report['rows']:>7,} rows  quarantined {bad:>5,} ({rate:.3%})  top: {top}")
+
+    rep_dir = config.REPORTS / "quality"
+    rep_dir.mkdir(parents=True, exist_ok=True)
+    out_csv = rep_dir / f"{slug}.csv"
+    pd.DataFrame(rows).fillna(0).to_csv(out_csv, index=False)
+    print(f"-> {out_csv}")
 
 
 if __name__ == "__main__":

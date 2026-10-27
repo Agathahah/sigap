@@ -47,4 +47,4 @@ def load_yaml(name: str) -> dict[str, Any]:
 
 def database_url() -> str:
     """Postgres URL from .env / environment (see .env.example)."""
-    return os.getenv("SIGAP_DB_URL", "postgresql+psycopg://sigap:sigap@localhost:5432/sigap")
+    return os.getenv("SIGAP_DB_URL", "postgresql+psycopg://sigap:sigap@localhost:5433/sigap")
