@@ -69,3 +69,23 @@ def test_compare_arms():
     assert df["arm"].tolist() == ["champion", "challenger"]
     assert df["saving_vs_first"].tolist()[0] == 0
     assert df["saving_vs_first"].tolist()[1] == pytest.approx(1000 - (200 + 10))
+
+
+def test_fast_optimizer_matches_brute_force():
+    y, p = _scores()
+    grid = np.unique(np.quantile(p, np.linspace(0.8, 1.0, 21)))
+    res = optimize_policy(y, p, COSTS, max_review_rate=0.04, grid=grid)
+    brute = min(
+        (cost_of_decisions(y, decide(p, tr, td), COSTS)["total_cost"], tr, td)
+        for tr in grid
+        for td in np.append(grid, np.inf)
+        if tr <= td and cost_of_decisions(y, decide(p, tr, td), COSTS)["review_rate"] <= 0.04
+    )
+    assert res["total_cost"] == pytest.approx(brute[0])
+
+
+def test_decline_guardrail():
+    y, p = _scores()
+    free = optimize_policy(y, p, COSTS, max_review_rate=0.05)
+    capped = optimize_policy(y, p, COSTS, max_review_rate=0.05, max_decline_rate=0.0)
+    assert capped["decline"] == 0 and capped["total_cost"] >= free["total_cost"]

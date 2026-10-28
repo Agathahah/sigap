@@ -1,24 +1,55 @@
 # Business assumptions for a FICTIONAL Indonesian digital bank ("Bank Nusa Digital").
-# BAF has no money amounts, so every number below is an ASSUMPTION. That is fine if you:
-#   1. write the reasoning and a public reference point next to each value,
-#   2. never present the result as a measured saving,
-#   3. show a sensitivity table (low / base / high) in docs/04_DECISION_POLICY.md.
-# TODO(Agatha) phase 6: fill every null. Keep units in IDR.
+# BAF has no money amounts, so every number below is an ASSUMPTION with its reasoning and a public reference
+# point. Results built on them are scenarios, never measured savings; docs/04_DECISION_POLICY.md shows how the
+# recommendation moves when each assumption moves (low / base / high). All money in IDR. Written 28 Oct 2026.
 
 currency: IDR
 
-applications_per_day: null          # e.g. how many accounts a mid-size digital bank opens per day; cite a source
-review_capacity_per_day: null       # analysts x reviews per analyst per day (state both)
-max_review_rate: null               # = review_capacity_per_day / applications_per_day
+# Volume. Reference: Bank Jago grew from 15.3 to 18.2 million customers in 2025 (+2.9 million, about 7,900 new
+# customers a day; Kontan, 12 Mar 2026). A mid-size digital bank at ~60% of that, counting applications rather
+# than opened accounts, gives about 5,000 applications a day.
+applications_per_day: 5000
+
+# Capacity: 10 analysts x 30 reviews a day (7 productive hours, about 14 minutes per case including a call-back
+# or video check). 300 / 5,000 = 6% of applications can be reviewed the same day.
+analysts: 10
+reviews_per_analyst_per_day: 30
+review_capacity_per_day: 300
+max_review_rate: 0.06
+
+# Guardrail on automatic declines. A decline is final for a genuine applicant and is a customer-protection
+# complaint risk, so the cost optimiser may decline at most 1% of applications. Without this limit, the base
+# assumptions (fraud loss 26x the value of a genuine customer) push the optimiser to decline 4.8% of applications,
+# most of them genuine (first run, 28 Oct). Remove or raise only after a live test measures the decline precision.
+max_decline_rate: 0.01
 
 costs:
-  fraud_loss: null                  # loss when a fraudulent account is opened (mule account, stolen identity)
-  review_cost: null                 # cost of one manual review (analyst minutes x loaded cost per minute)
-  review_catch_rate: null           # share of fraud an analyst stops in review (0-1)
-  good_decline_cost: null           # value lost when a genuine customer is declined (CAC + expected margin)
-  good_review_cost: null            # friction: genuine customer abandons during review (drop-off x value)
+  # Loss when a fraudulent account is opened and used as a mule account. Reference: the Indonesia Anti-Scam Centre
+  # (OJK) recorded Rp 9 trillion of reported losses across 681,890 reported accounts from Nov 2024 to 23 Dec 2025
+  # (Investortrust, 9 Jan 2026), about Rp 13 million of victims' money per reported account. The bank's own loss
+  # (refunds, investigation, regulatory and reputation cost) is uncertain, hence the wide range below.
+  fraud_loss: 13000000
+  # One manual review: analyst gross pay Rp 10 million a month (above the Jakarta 2026 minimum wage of about
+  # Rp 5.73 million) x 1.4 for BPJS, THR and overhead = Rp 14 million / 147 productive hours = about Rp 1,600 a
+  # minute; 10 minutes of analyst time plus tooling and verification calls = Rp 20,000.
+  review_cost: 20000
+  # Share of reviewed fraud that the analyst stops. No public figure; 70% assumes a document check plus a video
+  # or call-back step that most synthetic identities fail, while some well-prepared mules pass.
+  review_catch_rate: 0.7
+  # Value lost when a genuine applicant is declined: acquisition cost wasted plus expected margin. Reference:
+  # customer acquisition cost for digital banks in emerging markets estimated at US$15-50 (Quinlan & Associates,
+  # cited by Selular.id, 10 Aug 2023), about Rp 250,000-825,000; base Rp 500,000.
+  good_decline_cost: 500000
+  # Friction when a genuine applicant is sent to review: share who abandon x value. Reference: 68% of European
+  # consumers abandoned a financial application in the past year (Signicat, Battle to Onboard 2022). Assume 10%
+  # of genuine customers abandon because of an extra review step x Rp 500,000 = Rp 50,000.
+  good_review_cost: 50000
 
-sensitivity:                        # low and high for the assumptions you are least sure about
-  fraud_loss: [null, null]
-  review_catch_rate: [null, null]
-  good_decline_cost: [null, null]
+sensitivity:                        # low and high for the assumptions we are least sure about
+  fraud_loss: [3000000, 25000000]
+  review_catch_rate: [0.5, 0.9]
+  good_decline_cost: [250000, 1500000]
+  good_review_cost: [25000, 150000]
+  review_cost: [10000, 50000]
+  max_review_rate: [0.04, 0.08]
+  max_decline_rate: [0.0, 0.03]
