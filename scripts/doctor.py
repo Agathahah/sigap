@@ -131,6 +131,15 @@ def main(max_phase: float, spark: bool) -> int:
         check(f"MLflow {mlflow.__version__} importable", 5, True, "")
     except ImportError:
         check("MLflow importable", 5, False, "make setup")
+    try:
+        import xgboost
+
+        check(f"XGBoost {xgboost.__version__} loads (OpenMP runtime found)", 5, True, "")
+    except ImportError:
+        check("XGBoost installed", 5, False, "make setup")
+    except Exception as e:  # noqa: BLE001 - XGBoostError when libomp is missing on macOS
+        hint = "brew install libomp" if "libomp" in str(e) else f"{type(e).__name__}: {str(e)[:120]}"
+        check("XGBoost loads (OpenMP runtime found)", 5, False, hint)
 
     # ---- phase 8b: n8n image
     code, out = run(["docker", "images", "-q", "docker.n8n.io/n8nio/n8n"])

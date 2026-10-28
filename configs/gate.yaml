@@ -2,7 +2,8 @@
 min:
   test_tpr_at_5fpr: 0.40
   test_pr_auc: 0.10
-  test_fpr_ratio_age: 0.0    # raise after writing ADR 0005 (fairness), never lower after seeing results
+  test_fpr_ratio_age: 0.50   # ADR 0005: FPR of one age group at most 2x the other. Set on 28 Oct from month-5
+                             # results, before any test month was scored. Never lower it after seeing test.
 max:
   test_fpr: 0.06
   test_ece: 0.05

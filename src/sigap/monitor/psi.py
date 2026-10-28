@@ -13,17 +13,15 @@ import pandas as pd
 
 
 def psi(expected: np.ndarray, actual: np.ndarray, bins: int = 10, eps: float = 1e-4) -> float:
-    """Phase 8 · TODO(Agatha): PSI with quantile bins taken from `expected`.
-
-    1. Drop NaN from both arrays.
-    2. Edges = unique quantiles of expected at np.linspace(0, 1, bins + 1); set the first edge to -inf
-       and the last to +inf so every value of `actual` falls in a bin.
-    3. e, a = share of each array per bin; clip both to at least eps.
-    4. PSI = sum((a - e) * ln(a / e)).
-    Identical distributions give ~0; the result is never negative.
-    Tests: tests/test_p8_monitor.py::test_psi_*
-    """
-    raise NotImplementedError("TODO(Agatha) phase 8: sigap.monitor.psi.psi")
+    """PSI with quantile bins taken from `expected`; NaN dropped, shares clipped at eps. Never negative."""
+    e = np.asarray(expected, dtype=float)
+    a = np.asarray(actual, dtype=float)
+    e, a = e[~np.isnan(e)], a[~np.isnan(a)]
+    edges = np.unique(np.quantile(e, np.linspace(0, 1, bins + 1)))
+    edges[0], edges[-1] = -np.inf, np.inf
+    e_share = np.clip(np.histogram(e, edges)[0] / len(e), eps, None)
+    a_share = np.clip(np.histogram(a, edges)[0] / len(a), eps, None)
+    return float(np.sum((a_share - e_share) * np.log(a_share / e_share)))
 
 
 def drift_report(

@@ -251,7 +251,39 @@ def review_p5() -> None:
     check(phase_done("p5"), "p5 in tests/PHASES_DONE", "make phase-done P=5")
 
 
-REVIEWS = {"0": review_p0, "1": review_p1, "2": review_p2, "3": review_p3, "4": review_p4, "5": review_p5}
+def review_p6() -> None:
+    check(tests_pass("p6"), "make check P=6 green", "make check P=6")
+    biz = yaml.safe_load(read("configs/business.yaml") or "{}") or {}
+    costs = biz.get("costs") or {}
+    filled = biz.get("max_review_rate") is not None and costs and all(v is not None for v in costs.values())
+    check(bool(filled), "business assumptions filled (configs/business.yaml)", "fill every null with a reasoned value")
+    pol = ROOT / "reports" / "policy"
+    files = [pol / "champion_challenger_base.csv", pol / "sensitivity_base.csv", pol / "base_policy.json"]
+    check(all(f.exists() for f in files), "champion/challenger replay and sensitivity saved", "make policy")
+    check((ROOT / "models" / "current" / "policy.json").exists(), "bands stored next to the model", "make policy")
+    text = read("docs/04_DECISION_POLICY.md")
+    sections = ("## Chosen policy", "## Champion (rules) vs challenger", "## Sensitivity")
+    empty = [s for s in sections if s in text and not re.search(re.escape(s) + r".*?\n\|[^\n]*\d", text, re.S)]
+    check(
+        not empty and not PLACEHOLDER.search(text),
+        "decision policy tables filled with replay results",
+        "docs/04_DECISION_POLICY.md",
+    )
+    adr = read("docs/adr/0006-decision-bands-cost-capacity.md")
+    check("## Decision" in adr and not PLACEHOLDER.search(adr), "ADR 0006 written", "docs/adr/0006-...md")
+    check(doc_filled("docs/05_BUSINESS_MEMO.md", 800), "business memo written", "docs/05_BUSINESS_MEMO.md")
+    check(phase_done("p6"), "p6 in tests/PHASES_DONE", "make phase-done P=6")
+
+
+REVIEWS = {
+    "0": review_p0,
+    "1": review_p1,
+    "2": review_p2,
+    "3": review_p3,
+    "4": review_p4,
+    "5": review_p5,
+    "6": review_p6,
+}
 
 
 def main(phase: str) -> int:
