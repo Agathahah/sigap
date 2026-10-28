@@ -48,6 +48,14 @@ def test_first_reason_wins():
     assert bad["_reason"].tolist() == ["income: out of range"]
 
 
+def test_int_column_rejects_fractions_and_returns_integers():
+    df = _df().iloc[[0, 0]].reset_index(drop=True)
+    df["customer_age"] = [30.0, 30.5]
+    valid, bad, _ = validate_batch(df, CONTRACT)
+    assert bad["_reason"].tolist() == ["customer_age: wrong type"]
+    assert valid["customer_age"].tolist() == [30] and str(valid["customer_age"].dtype) == "Int64"
+
+
 def test_missing_column_rejects_batch():
     with pytest.raises(ContractError):
         validate_batch(_df().drop(columns=["payment_type"]), CONTRACT)

@@ -31,12 +31,12 @@ Six columns, listed in `configs/data_contract.yaml`. Shares and fraud rates come
 
 | Column | Rule | Share missing | Fraud rate when missing vs. not |
 |---|---|---|---|
-| prev_address_months_count | `-1` | — | — |
-| current_address_months_count | `-1` | — | — |
-| intended_balcon_amount | `< 0` | — | — |
-| bank_months_count | `-1` | — | — |
-| session_length_in_minutes | `-1` | — | — |
-| device_distinct_emails_8w | `-1` | — | — |
+| prev_address_months_count | `-1` | 69.55% | 1.31% vs 0.28% (4.7×) |
+| current_address_months_count | `-1` | 0.42% | 0.28% vs 1.00% (0.3×) |
+| intended_balcon_amount | `< 0` | 73.08% | 1.19% vs 0.48% (2.5×) |
+| bank_months_count | `-1` | 25.50% | 1.49% vs 0.83% (1.8×) |
+| session_length_in_minutes | `-1` | 0.19% | 0.78% vs 1.00% (0.8×) |
+| device_distinct_emails_8w | `-1` | 0.04% | 1.09% vs 1.00% (1.1×) |
 
 `device_fraud_count` is 0 in every row of the Base file and carries no information.
 

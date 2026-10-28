@@ -38,8 +38,9 @@ def load_contract(path: Path) -> dict[str, Any]:
 def validate_batch(df: pd.DataFrame, contract: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
     """Split a batch into (valid rows, quarantined rows with `_reason`, report of counts).
 
-    Checks per contract column, in contract order: null (when not nullable), wrong type (numeric columns),
-    out of range (min/max), not allowed (category list). A row keeps the first reason found.
+    Checks per contract column, in contract order: null (when not nullable), wrong type (numeric columns; int
+    columns also reject non-whole numbers), out of range (min/max), not allowed (category list). A row keeps the
+    first reason found. Valid rows are returned with int columns cast to integers.
     Columns that are not in the contract pass through untouched. A missing contract column rejects the batch.
     """
     columns = contract["columns"]
@@ -61,6 +62,8 @@ def validate_batch(df: pd.DataFrame, contract: dict[str, Any]) -> tuple[pd.DataF
         if rule.get("type") in NUMERIC_TYPES:
             numbers = pd.to_numeric(values, errors="coerce")
             flag(numbers.isna() & ~is_null, f"{col}: wrong type")
+            if rule["type"] == "int":
+                flag(numbers.notna() & (numbers % 1 != 0), f"{col}: wrong type")  # 12.5 is not an int
             if "min" in rule:
                 flag(numbers < rule["min"], f"{col}: out of range")
             if "max" in rule:
@@ -70,6 +73,9 @@ def validate_batch(df: pd.DataFrame, contract: dict[str, Any]) -> tuple[pd.DataF
 
     bad = reason.notna()
     valid = df.loc[~bad].copy()
+    for col, rule in columns.items():  # valid rows leave in contract types: 181.0 -> 181 for int columns
+        if rule.get("type") == "int":
+            valid[col] = pd.to_numeric(valid[col]).astype("Int64")
     quarantine = df.loc[bad].assign(_reason=reason[bad])
     report: dict[str, int] = {"rows": len(df), "valid": len(valid), "quarantined": int(bad.sum())}
     report.update(Counter(reason[bad].tolist()))
