@@ -16,11 +16,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PLACEHOLDER = re.compile(r"(?<![\w*`])_[A-Za-z][^_\n]{2,}_(?![\w*`])")  # template prompts written as _..._
-RESULTS: list[tuple[bool, str, str]] = []
+RESULTS: list[tuple[bool, str, str, bool]] = []
 
 
-def check(ok: bool, what: str, fix: str = "") -> None:
-    RESULTS.append((bool(ok), what, fix))
+def check(ok: bool, what: str, fix: str = "", optional: bool = False) -> None:
+    """optional=True marks a Could item: shown as LATER when missing, never blocks the phase."""
+    RESULTS.append((bool(ok), what, fix, optional))
 
 
 def read(rel: str) -> str:
@@ -319,6 +320,60 @@ def review_p7() -> None:
     check(phase_done("p7"), "p7 in tests/PHASES_DONE", "make phase-done P=7")
 
 
+def review_p8() -> None:
+    check(tests_pass("p8"), "make check P=8 green", "make check P=8")
+    sys.path.insert(0, str(ROOT / "src"))
+    months, n_replay, has_perf, has_views, err = [], 0, False, False, ""
+    try:
+        import psycopg
+
+        from sigap import config
+
+        dsn = config.database_url().replace("postgresql+psycopg://", "postgresql://", 1)
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            months = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT month FROM ops.monitoring_monthly WHERE metric = 'review_rate' ORDER BY 1"
+                )
+            ]
+            n_replay = conn.execute(
+                "SELECT count(*) FROM ops.decision_log l JOIN gold.fact_application f USING (application_id)"
+            ).fetchone()[0]
+            has_perf = (
+                conn.execute(
+                    "SELECT count(*) FROM ops.monitoring_monthly WHERE metric = 'tpr' AND month >= 5"
+                ).fetchone()[0]
+                > 0
+            )
+            has_views = conn.execute("SELECT to_regclass('ops.v_monthly_kpis') IS NOT NULL").fetchone()[0]
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc).splitlines()[0]
+    check(months == [5, 6, 7], f"replay of months 5-7 in ops.monitoring_monthly (found {months})", err or "make replay")
+    check(n_replay > 0, f"replay decisions in ops.decision_log ({n_replay:,} warehouse applications)", "make replay")
+    check(has_perf, "performance recorded when labels arrived (recall, FPR, age ratio)", "make replay")
+    check(bool(has_views), "dashboard views (ops.v_monthly_kpis)", "make monitor-views")
+    summary = ROOT / "reports" / "monitor" / "replay_base.csv"
+    check(summary.exists(), "replay summary saved (reports/monitor/replay_base.csv)", "make replay")
+    runbook = read("docs/RUNBOOK.md")
+    rule = runbook.split("## Retraining rule")[1].split("\n## ")[0] if "## Retraining rule" in runbook else ""
+    check(
+        "0.25" in rule and "10 points" in rule and not PLACEHOLDER.search(rule),
+        "RUNBOOK: retraining rule",
+        "docs/RUNBOOK.md",
+    )
+    dag = read("dags/sigap_monthly.py")
+    check("BashOperator" in dag and "TODO" not in dag, "Airflow DAG written (dags/sigap_monthly.py)", "dags/")
+    airflow_ok = (Path.home() / "airflow").exists()
+    check(
+        airflow_ok,
+        "Airflow ran the DAG for one month (Could)",
+        "see the docstring in dags/sigap_monthly.py",
+        optional=True,
+    )
+    check(phase_done("p8"), "p8 in tests/PHASES_DONE", "make phase-done P=8")
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -328,6 +383,7 @@ REVIEWS = {
     "5": review_p5,
     "6": review_p6,
     "7": review_p7,
+    "8": review_p8,
 }
 
 
@@ -338,11 +394,11 @@ def main(phase: str) -> int:
         return 0
     REVIEWS[phase]()
     print(f"\nSIGAP review · phase {phase}\n")
-    for ok, what, fix in RESULTS:
-        print(f"  {'OK     ' if ok else 'MISSING'}  {what}")
+    for ok, what, fix, optional in RESULTS:
+        print(f"  {'OK     ' if ok else ('LATER  ' if optional else 'MISSING')}  {what}")
         if not ok and fix:
             print(f"           -> {fix}")
-    missing = sum(not ok for ok, _, _ in RESULTS)
+    missing = sum(not ok and not optional for ok, _, _, optional in RESULTS)
     print("\n" + ("Phase complete." if not missing else f"{missing} item(s) left."))
     return 1 if missing else 0
 

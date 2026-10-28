@@ -106,8 +106,10 @@ docker-run: ## run the image with the current model mounted read-only (Postgres 
 	  -v "$(CURDIR)/models/current:/app/models/current:ro" sigap-api:local
 
 # ---------- phase 8 · monitoring ----------
-replay: ## months 5-7 as if live: score, drift, late labels, retraining rule
-	$(PY) -m sigap.monitor.replay
+replay: ## months 5-7 as if live: score, drift, late labels, retraining rule (M=6 for one month)
+	$(PY) -m sigap.monitor.replay $(M)
+monitor-views: ## dashboard views over ops.monitoring_monthly (run after make replay)
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap} -v ON_ERROR_STOP=1 < sql/warehouse/004_monitoring_views.sql
 dashboard: ## Metabase on http://localhost:3000 (connect it to Postgres)
 	docker compose --profile dashboard up -d
 

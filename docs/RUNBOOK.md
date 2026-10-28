@@ -1,14 +1,34 @@
 # Runbook
 
 ## Monthly job (Airflow DAG sigap_monthly)
-_order of tasks, how to re-run one month, where logs are_
+Order: `quality → bronze → silver → gold → features → replay(month) → ops_sync(month)`. Every task is a `make`
+target and is idempotent (partitions overwritten, gold upserted, a month's replay rows replaced), so a failed or
+repeated month is simply re-run.
+
+- **Run one month by hand:** `make replay M=6` (after the pipeline targets). **All replay months:** `make replay`.
+- **Run in Airflow:** `airflow dags trigger sigap_monthly --conf '{"month": 6}'`; logs per task in the Airflow UI
+  (http://localhost:8080) under the DAG run. Retries: 2, five minutes apart.
+- **Outputs:** decisions in `ops.decision_log`, monthly metrics in `ops.monitoring_monthly`, a summary in
+  `reports/monitor/replay_<variant>.csv`, dashboard views from `make monitor-views`.
+
+## Retraining rule
+Written on 28 Oct 2026, before the first replay. A retraining ticket is opened when any of these holds:
+
+| Signal | When it is known | Threshold | Why |
+|---|---|---|---|
+| Score PSI vs training months | the day the month's data arrives | ≥ 0.25 | the score distribution has moved enough that the threshold and bands no longer mean what they meant |
+| Recall at the operating threshold | when the month's labels arrive (+2 months) | more than 10 points below validation (0.518) | the model misses noticeably more fraud than when it was approved |
+| FPR ratio by age group | when labels arrive | < 0.50 | the release-gate fairness limit (ADR 0005) no longer holds |
+
+Feature PSI ≥ 0.25 alone does not open a ticket: it is investigated first (data incident or real change), because
+a single drifting input can leave the score stable.
 
 ## Alerts and what to do
 | Signal | Threshold | First check | Action |
 |---|---|---|---|
-| Quarantine rate | _> x%_ | _source system change?_ | _hold the month, contact source owner_ |
-| Score PSI | > 0.25 | _which feature drifted?_ | _retraining ticket; consider tightening review band_ |
-| TPR at operating threshold | _drop > 10 pts_ | _label completeness_ | _retrain / fall back to rules_ |
+| Quarantine rate | > 2% of a month | did the source system change a field, a format or a code list? | hold the month, contact the source owner, do not retrain on it |
+| Score PSI | > 0.25 | which top features drifted (`ops.v_feature_drift`)? | retraining ticket; consider tightening the review band until then |
+| Recall at operating threshold | drop > 10 pts vs validation | are the month's labels complete? | retrain; if severe, fall back to the rules |
 | API p95 latency | > 100 ms | `make load-test`: server-side vs round-trip time; container CPU and memory | add workers or replicas; if the API is down, route to the rules (Fallback) |
 
 ## Alert routing (phase 8b, n8n)
@@ -35,4 +55,7 @@ If n8n is down: alerts stay in ops.alert (acked_at NULL) and are sent when it co
   p95 12.3 ms, p99 29.2 ms; server side p95 9.3 ms; 0 errors. Target p95 < 100 ms.
 
 ## Fallback
-_If the model or API is down: rules-only policy from configs/rules.yaml (champion)._
+If the API is down, the model fails its monthly checks, or a retraining ticket is open and severe, account opening
+switches to the rules-only policy (`configs/rules.yaml`, the champion): any rule hit goes to review, everything
+else is approved, nothing is declined automatically. The rules need about 14 analysts at today's volume (decision
+policy), so the review queue is the first thing to watch during a fallback.
