@@ -1,6 +1,7 @@
 # ERD · warehouse and operational tables
 
-Draft (phase 0). The final version follows the DDL in `sql/warehouse/`.
+Matches the DDL in `sql/warehouse/001_schemas.sql` (gold + decision/monitoring tables) and `003_ops.sql`
+(review cases and alerts). Loaded by `src/sigap/pipeline/gold.py`.
 
 **Grain of the fact table:** one row per account-opening application.
 
@@ -17,24 +18,24 @@ erDiagram
 
     DIM_MONTH {
         int month_key PK
-        int month_index
-        boolean label_complete "false for the last 2 months (labels not arrived)"
+        smallint month_index UK
+        boolean label_complete "month + label lag <= as-of month"
     }
     DIM_CHANNEL {
-        int channel_key PK
-        text source
-        text payment_type
+        int channel_key PK "identity"
+        text source UK
+        text payment_type UK
     }
     DIM_DEVICE {
-        int device_key PK
-        text device_os
+        int device_key PK "identity"
+        text device_os UK
         smallint keep_alive_session
         smallint email_is_free
     }
     DIM_PROFILE {
-        int profile_key PK
-        text age_band "protected"
-        int income_decile "protected"
+        int profile_key PK "identity"
+        text age_band "protected: <30 | 30-39 | 40-49 | 50-59 | 60+"
+        smallint income_decile "protected: 1..9"
         text employment_status "protected"
         text housing_status
     }
@@ -44,8 +45,12 @@ erDiagram
         int channel_key FK
         int device_key FK
         int profile_key FK
-        float velocity_6h
         float name_email_similarity
+        float velocity_6h "also velocity_24h, velocity_4w"
+        int credit_risk_score
+        float proposed_credit_limit
+        int prev_address_months_count "NULL when the source had the sentinel"
+        smallint prev_address_months_count_missing "one flag per sentinel column (6)"
         smallint is_fraud "NULL until the label arrives"
     }
     DECISION_LOG {
@@ -54,13 +59,13 @@ erDiagram
         text model_version
         float score
         text decision "approve | review | decline"
-        text reasons
+        text_array reasons "reason codes, no raw values"
         timestamptz decided_at
     }
     MONITORING_MONTHLY {
-        int month PK
-        text metric PK
-        text feature PK
+        smallint month PK
+        text metric PK "psi | alert_rate | review_rate | tpr | fpr"
+        text feature PK "'' when not per feature"
         float value
     }
     REVIEW_CASE {
@@ -96,3 +101,11 @@ erDiagram
   system, not by the batch pipeline, and are kept apart from the analytical `gold` schema.
 - **Analyst decisions are not labels.** `review_decision` records what an analyst concluded for a reviewed case;
   it never overwrites `fact_application.is_fraud`.
+- **Stable surrogate keys.** Dimension keys are identity columns and new categories are inserted with
+  `ON CONFLICT DO NOTHING`, so a key never changes after it is assigned. The fact is upserted on
+  `application_id`; the load never truncates, because `ops.decision_log` references the fact.
+- **Point in time.** The warehouse is built as of the latest month in silver: a label is joined only when
+  `available_month <= as_of`. With 8 months and a 2-month lag, months 0–5 are labelled and months 6–7 are not
+  yet; re-running after the next drop fills them in.
+- **Sentinels as NULL + flag.** The six sentinel columns are NULL in the fact, with a `*_missing` flag beside
+  each one (EDA finding F1: the missing pattern itself is a fraud signal).

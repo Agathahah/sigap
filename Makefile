@@ -3,6 +3,7 @@ PY := .venv/bin/python
 DATASET := sgpjesus/bank-account-fraud-dataset-neurips-2022
 FILES ?= Base.csv
 P ?= 1
+F ?= sql/checks/p3_gold.sql
 export PYTHONPATH := src
 
 # Load .env (git-ignored) so every command sees SIGAP_* settings. Keep .env lines simple: KEY=value, no quotes.
@@ -24,8 +25,14 @@ db-down: ## stop Postgres (data kept in a volume)
 	docker compose down
 db-psql: ## open psql inside the container
 	docker compose exec postgres psql -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap}
+db-sql: ## run a SQL file inside the container and print the result: make db-sql F=sql/checks/p3_gold.sql
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap} -v ON_ERROR_STOP=1 < $(F)
+env-secrets: ## replace every change-me value in .env with a random secret (and the Postgres password in the DB)
+	@$(PY) scripts/env_secrets.py
 doctor: ## check the TOOLS a phase needs (not your code): make doctor P=3 [SPARK=1]
 	@P=$(if $(filter command line,$(origin P)),$(P),0) SPARK=$(SPARK) $(PY) scripts/doctor.py
+review: ## definition of done for phase P (tests, data, documents): make review P=2
+	@$(PY) scripts/review.py $(P)
 phase-done: ## after make check P=n is green: add pn to tests/PHASES_DONE so CI protects it
 	@$(PY) scripts/phase_done.py $(P)
 check: ## acceptance tests of one phase, e.g. make check P=1
