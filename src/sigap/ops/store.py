@@ -1,12 +1,10 @@
-"""Phase 8b · Where alerts, cases and decisions live.
+"""Where alerts, cases and decisions live.
 
 `OpsStore` is the interface the API depends on. Two implementations:
-  InMemoryStore  provided: used by the tests and by `make ops-demo` (lets you build the n8n workflows
-                 before the model exists)
-  PostgresStore  TODO(Agatha): the real one, over the tables in sql/warehouse/003_ops.sql
+  InMemoryStore  used by the tests and by `make ops-demo` (build the n8n workflows without a database)
+  PostgresStore  the real one, over the tables in sql/warehouse/003_ops.sql
 
-Why an interface: the API logic (validation, state machine, idempotency) is tested without a database, and the
-same tests protect the Postgres version once you write it.
+The API logic (validation, state machine, idempotency) is tested without a database; both stores behave the same.
 """
 
 from __future__ import annotations
@@ -35,7 +33,7 @@ def _now() -> str:
 
 
 class InMemoryStore:
-    """Provided. Plain dictionaries; same behaviour the PostgresStore must have."""
+    """Plain dictionaries; the same behaviour as PostgresStore."""
 
     def __init__(self) -> None:
         self.alerts: dict[str, Alert] = {}
@@ -99,23 +97,127 @@ class InMemoryStore:
         return dict(rec)
 
 
+ALERT_COLUMNS = ("alert_key", "kind", "severity", "month", "subject", "value", "threshold")
+CASE_COLUMNS = ("case_id", "application_id", "month", "day", "score", "decision_band", "reasons", "priority", "status")
+
+
 class PostgresStore:
-    """Phase 8b · TODO(Agatha): OpsStore over Postgres (tables in sql/warehouse/003_ops.sql).
+    """OpsStore over Postgres (sql/warehouse/003_ops.sql). Parameterized SQL only; one transaction per write."""
 
-    - Constructor takes a SQLAlchemy engine (sigap.config.database_url()).
-    - add_alerts: INSERT ... ON CONFLICT (alert_key) DO NOTHING; return the number inserted.
-    - ack_alert: set acked_at/channel only if still NULL (idempotent); False if the key does not exist.
-    - save_decision: INSERT into ops.review_decision AND UPDATE ops.review_case.status in ONE transaction.
-    - Parameterized queries only (text() with bind params), never f-strings with values.
-    Integration test (runs only when SIGAP_TEST_DB is set): tests/test_p8b_ops.py::test_postgres_store_roundtrip
-    """
+    def __init__(self, engine) -> None:  # noqa: ANN001 - a SQLAlchemy engine
+        self.engine = engine
 
-    def __init__(self, engine) -> None:  # noqa: ANN001
-        raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.store.PostgresStore")
+    def _rows(self, sql: str, **params) -> list[dict]:
+        from sqlalchemy import text
+
+        with self.engine.connect() as conn:
+            return [dict(r._mapping) for r in conn.execute(text(sql), params)]
+
+    # alerts
+    def add_alerts(self, alerts: list[Alert]) -> int:
+        from sqlalchemy import text
+
+        if not alerts:
+            return 0
+        rows = [{c: getattr(a, c) for c in ALERT_COLUMNS} for a in alerts]
+        sql = text(
+            "INSERT INTO ops.alert (alert_key, kind, severity, month, subject, value, threshold) "
+            "VALUES (:alert_key, :kind, :severity, :month, :subject, :value, :threshold) "
+            "ON CONFLICT (alert_key) DO NOTHING RETURNING alert_key"
+        )
+        with self.engine.begin() as conn:
+            return sum(len(conn.execute(sql, row).fetchall()) for row in rows)
+
+    def list_open_alerts(self) -> list[Alert]:
+        rows = self._rows(
+            "SELECT alert_key, kind, severity, month, subject, value, threshold FROM ops.alert "
+            "WHERE acked_at IS NULL ORDER BY CASE severity WHEN 'high' THEN 0 ELSE 1 END, kind, subject"
+        )
+        return [Alert(**r) for r in rows]
+
+    def ack_alert(self, alert_key: str, channel: str) -> bool:
+        from sqlalchemy import text
+
+        with self.engine.begin() as conn:
+            exists = conn.execute(text("SELECT 1 FROM ops.alert WHERE alert_key = :k"), {"k": alert_key}).first()
+            if not exists:
+                return False
+            conn.execute(
+                text("UPDATE ops.alert SET acked_at = now(), channel = :ch WHERE alert_key = :k AND acked_at IS NULL"),
+                {"k": alert_key, "ch": channel},
+            )
+        return True
+
+    # cases
+    def add_cases(self, cases: pd.DataFrame) -> int:
+        from sqlalchemy import text
+
+        if cases.empty:
+            return 0
+        rows = cases[list(CASE_COLUMNS)].to_dict("records")
+        for r in rows:
+            r["reasons"] = list(r["reasons"])
+        sql = text(
+            "INSERT INTO ops.review_case (case_id, application_id, month, day, score, decision_band, reasons, "
+            "priority, status) VALUES (:case_id, :application_id, :month, :day, :score, :decision_band, :reasons, "
+            ":priority, :status) ON CONFLICT (case_id) DO NOTHING"
+        )
+        with self.engine.begin() as conn:
+            before = conn.execute(text("SELECT count(*) FROM ops.review_case")).scalar_one()
+            conn.execute(sql, rows)
+            after = conn.execute(text("SELECT count(*) FROM ops.review_case")).scalar_one()
+        return int(after - before)
+
+    def list_cases(self, status: str | None = None, limit: int = 20) -> list[dict]:
+        where = "WHERE status = :status" if status else ""
+        return self._rows(
+            f"SELECT {', '.join(CASE_COLUMNS)} FROM ops.review_case {where} "  # noqa: S608 - fixed column list
+            "ORDER BY day, priority, case_id LIMIT :limit",
+            status=status,
+            limit=limit,
+        )
+
+    def get_case(self, case_id: str) -> dict | None:
+        rows = self._rows(
+            f"SELECT {', '.join(CASE_COLUMNS)} FROM ops.review_case WHERE case_id = :id",  # noqa: S608
+            id=case_id,
+        )
+        return rows[0] if rows else None
+
+    def last_decision(self, case_id: str) -> dict | None:
+        rows = self._rows(
+            "SELECT case_id, outcome, analyst_id, note, status_after AS status, decided_at FROM ops.review_decision "
+            "WHERE case_id = :id ORDER BY decided_at DESC, decision_id DESC LIMIT 1",
+            id=case_id,
+        )
+        return rows[0] if rows else None
+
+    def save_decision(self, case_id: str, outcome: str, analyst_id: str, note: str | None, new_status: str) -> dict:
+        from sqlalchemy import text
+
+        with self.engine.begin() as conn:  # the audit row and the status change succeed or fail together
+            row = conn.execute(
+                text(
+                    "INSERT INTO ops.review_decision (case_id, outcome, analyst_id, note, status_after) "
+                    "VALUES (:c, :o, :a, :n, :s) RETURNING decided_at"
+                ),
+                {"c": case_id, "o": outcome, "a": analyst_id, "n": note, "s": new_status},
+            ).one()
+            conn.execute(
+                text("UPDATE ops.review_case SET status = :s WHERE case_id = :c"), {"s": new_status, "c": case_id}
+            )
+        return {
+            "case_id": case_id,
+            "outcome": outcome,
+            "analyst_id": analyst_id,
+            "note": note,
+            "status": new_status,
+            "decided_at": row.decided_at.isoformat(timespec="seconds"),
+        }
 
 
 def get_store() -> OpsStore:
-    """Provided. FastAPI dependency. SIGAP_OPS_STORE=memory (demo/tests) or postgres (default)."""
+    """FastAPI dependency. SIGAP_OPS_STORE=memory (demo, tests) or postgres (default)."""
     import os
 
     global _STORE

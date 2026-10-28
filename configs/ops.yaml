@@ -1,9 +1,10 @@
-# Phase 8b · operational alert thresholds (read by sigap.ops.sync together with business.yaml).
+# Operational alert thresholds (read by sigap.ops.sync together with business.yaml).
 # Write the reason next to every number, like business.yaml. These are decisions, not facts.
 
 psi_alert: 0.25               # same as the drift "alert" level in phase 8 (rule of thumb, see RUNBOOK)
-queue_tolerance: 0.0          # 0.10 = only alert when reviews exceed capacity by more than 10%
-quarantine_rate_alert: 0.02   # TODO(Agatha) phase 8b: set from the quarantine rates you saw in phase 2
+queue_tolerance: 0.10         # a day up to 10% over capacity is absorbed with overtime; above that, alert the lead
+quarantine_rate_alert: 0.02   # Base had 0% quarantine in all 8 months (phase 2); 2% of a month is far outside
+                              # normal and means a source change, not noise
 # review_capacity_per_day comes from configs/business.yaml (phase 6), never duplicated here
 
 runbook_url: https://github.com/Agathahah/sigap/blob/main/docs/RUNBOOK.md   # alert messages link here

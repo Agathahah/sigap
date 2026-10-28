@@ -1,7 +1,7 @@
-"""Phase 8b · Demo ops API with an in-memory store and synthetic cases. Plumbing, provided.
+"""Demo ops API with an in-memory store and made-up cases.
 
-Purpose: build and test the n8n workflows BEFORE the model and Postgres tables exist. Uses YOUR functions
-(build_alerts, assign_cases and the router), so it only works once those tests are green.
+Purpose: build and test the n8n workflows without the model or the Postgres tables. Uses the real build_alerts,
+assign_cases and router.
 
 Run:  make ops-demo      (http://127.0.0.1:8001/docs, store resets on every restart)
 No real BAF rows here: application ids and scores are made up.

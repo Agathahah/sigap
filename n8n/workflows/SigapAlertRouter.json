@@ -1,0 +1,123 @@
+{
+  "name": "SIGAP · alert router",
+  "id": "SigapAlertRouter",
+  "nodes": [
+    {
+      "id": "fc00eb6c-04ab-4893-8ce3-3a837c32fcc3",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "74c26025-5a4f-4634-b7ef-c8a497c15cb5",
+      "name": "Get open alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $env.SIGAP_API_URL }}/v1/ops/alerts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "notes": "Header Auth credential 'SIGAP ops key': name X-API-Key, value = SIGAP_OPS_API_KEY from .env"
+    },
+    {
+      "id": "d153e93c-4dc2-4739-a749-700829b9095d",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $env.SIGAP_WA_PHONE_NUMBER_ID }}",
+        "recipientPhoneNumber": "={{ $env.SIGAP_ANALYST_WHATSAPP }}",
+        "textBody": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "notes": "WhatsApp Cloud API credential. Free-form text needs an open 24-hour window: message the business number first."
+    },
+    {
+      "id": "8463c854-eb98-4235-8395-c2dd4c9cf961",
+      "name": "Acknowledge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SIGAP_API_URL }}/v1/ops/alerts/{{ $('Get open alerts').item.json.alert_key }}/ack",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"channel\": \"whatsapp\"}",
+        "options": {}
+      },
+      "notes": "Runs only after WhatsApp accepted the message: an alert that failed to send stays open and is retried."
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Get open alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get open alerts": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Jakarta"
+  },
+  "active": false,
+  "pinData": {}
+}

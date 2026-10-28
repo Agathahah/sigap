@@ -30,7 +30,7 @@ services:
       N8N_SECURE_COOKIE: "false"                         # local http only; never on a public server
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"              # workflows read the 3 SIGAP_* values below via $env
-      SIGAP_API_URL: ${SIGAP_API_URL_FOR_N8N:-http://host.docker.internal:8001}
+      SIGAP_API_URL: ${SIGAP_API_URL_FOR_N8N:-http://host.docker.internal:8000}   # 8001 = make ops-demo
       SIGAP_ANALYST_WHATSAPP: ${SIGAP_ANALYST_WHATSAPP}  # your number, from .env (never in the workflow JSON)
       SIGAP_WA_PHONE_NUMBER_ID: ${SIGAP_WA_PHONE_NUMBER_ID}
     volumes:

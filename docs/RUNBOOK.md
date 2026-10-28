@@ -31,14 +31,31 @@ a single drifting input can leave the score stable.
 | Recall at operating threshold | drop > 10 pts vs validation | are the month's labels complete? | retrain; if severe, fall back to the rules |
 | API p95 latency | > 100 ms | `make load-test`: server-side vs round-trip time; container CPU and memory | add workers or replicas; if the API is down, route to the rules (Fallback) |
 
-## Alert routing (phase 8b, n8n)
+## Alert routing (n8n)
+n8n polls `GET /v1/ops/alerts` every 15 minutes, sends each open alert to WhatsApp and acknowledges it only after
+WhatsApp accepted the message. Alerts are written by `make ops-sync M=<month>` (after `make replay`).
+
 | Alert kind | Goes to | Expected first action | Silence rule |
 |---|---|---|---|
-| drift | _data science on duty_ | _check which feature; compare with quarantine report_ | _one message per key (alert_key)_ |
-| queue_over_capacity | _fraud ops lead_ | _move analysts / tighten review band temporarily (phase 6 memo)_ | |
-| data_incident | _source-system owner_ | _hold the month; do not retrain on it_ | |
+| drift | data science on duty | check which feature moved (`ops.v_feature_drift`); compare with the quarantine report | one message per `alert_key`; watch-level PSI stays on the dashboard |
+| queue_over_capacity | fraud operations lead | move analysts or approve overtime; if it lasts, tighten the review band (decision policy) | only above capacity + 10%; one message per day |
+| data_incident | source-system owner | hold the month; do not retrain or trust drift on it | one message per month |
 
-If n8n is down: alerts stay in ops.alert (acked_at NULL) and are sent when it comes back; nothing is lost.
+### drift
+Score PSI ≥ 0.25 is high severity and follows the retraining rule. A single feature at PSI ≥ 0.25 (medium) is
+investigated first: a source change (data incident) or a real shift in applicants.
+
+### queue_over_capacity
+Cases beyond the day's capacity wait in the backlog (status `backlog`, riskiest first). Review the backlog the
+next morning before new cases; if three days in a row are over capacity, raise it with the fraud operations lead.
+
+### data_incident
+More than 2% of a month quarantined. Base had 0% in every month, so this means the source system changed. The
+month is held until the owner confirms.
+
+**Review cases:** every weekday at 08:30 n8n sends the five highest-priority assigned cases with a link to the
+decision form; the form posts to `POST /v1/ops/cases/{case_id}/decision`. If n8n is down, alerts stay in
+`ops.alert` (`acked_at` NULL) and cases stay assigned; both are sent when it comes back, nothing is lost.
 
 ## Scoring API
 - **Start (development):** `make serve` → http://127.0.0.1:8000/docs. **Start (container):** `make docker-build`

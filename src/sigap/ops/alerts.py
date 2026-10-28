@@ -1,4 +1,4 @@
-"""Phase 8b · Operational alerts: what wakes up the fraud team, and what does not.
+"""Operational alerts: what wakes up the fraud team, and what does not.
 
 Three signals, three different owners (this is the business lesson of the phase):
   drift                 score/feature PSI >= psi_alert           -> data science (model may be stale)
@@ -11,6 +11,7 @@ to WhatsApp every 15 minutes. `alert_key` gives the same id for the same event, 
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -27,7 +28,7 @@ KIND_LABEL_ID = {  # what the analyst reads on WhatsApp
 
 @dataclass(frozen=True)
 class Alert:
-    """Provided. One operational alert, ready to be stored in ops.alert and sent by n8n."""
+    """One operational alert, ready to be stored in ops.alert and sent by n8n."""
 
     alert_key: str
     kind: str  # one of KINDS
@@ -40,54 +41,67 @@ class Alert:
 
 
 def alert_key(kind: str, month: int, subject: str) -> str:
-    """Phase 8b · TODO(Agatha): stable id for one event.
+    """Stable id for one event: first 16 hex characters of sha1("kind|month|subject").
 
-    - sha1 of the text f"{kind}|{month}|{subject}" (utf-8), first 16 hex characters.
-      Pass usedforsecurity=False: this is an id, not a password hash (and ruff rule S324 stays quiet).
-    - Same inputs -> same key on every run and every machine (do NOT use hash(), it is salted per process).
-    - Raise ValueError if kind is not in KINDS.
-    Test: tests/test_p8b_ops.py::test_alert_key_is_stable
+    The same event gets the same key on every run and machine (Python's hash() is salted per process), so the
+    store de-duplicates repeated polls and an alert reaches WhatsApp once.
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.alerts.alert_key")
+    if kind not in KINDS:
+        raise ValueError(f"unknown alert kind {kind!r}; expected one of {KINDS}")
+    return hashlib.sha1(f"{kind}|{month}|{subject}".encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def build_alerts(drift: pd.DataFrame, queue: pd.DataFrame, quality: pd.DataFrame, cfg: dict) -> list[Alert]:
-    """Phase 8b · TODO(Agatha): turn monitoring tables into a de-duplicated, ordered list of alerts.
+    """Monitoring tables -> de-duplicated, ordered alerts.
 
-    Inputs (any of them may be empty):
-      drift    columns month, feature, psi           (from ops.monitoring_monthly / drift_report)
-      queue    columns month, day, review_count      (reviews created per day, from ops.review_case)
-      quality  columns month, quarantine_rate        (0-1, from the phase 2 quality report)
-      cfg      psi_alert (e.g. 0.25), review_capacity_per_day (int), queue_tolerance (e.g. 0.0),
-               quarantine_rate_alert (e.g. 0.02)
-
-    Rules:
-      drift:   psi >= psi_alert -> Alert(kind="drift", subject=feature, value=psi, threshold=psi_alert),
-               severity "high" if feature == "score" else "medium". PSI between "watch" and "alert" is a
-               dashboard matter, NOT a message.
-      queue:   review_count > capacity * (1 + queue_tolerance) -> kind "queue_over_capacity", subject=day,
-               value=review_count, threshold=capacity, severity "high" if review_count > 1.5 * capacity else
-               "medium".
-      quality: quarantine_rate >= quarantine_rate_alert -> kind "data_incident", subject=f"month={month:02d}",
-               severity "high".
-    Every alert gets alert_key(kind, month, subject). If two rows produce the same key, keep the first.
-    Order: severity (high first), then kind in the order of KINDS, then subject ascending.
-    Tests: tests/test_p8b_ops.py::test_build_alerts_*
+    drift   (month, feature, psi):            psi >= psi_alert -> "drift"; high for the score, medium otherwise.
+                                              Watch-level PSI belongs on the dashboard, not in a message.
+    queue   (month, day, review_count):       count > capacity x (1 + tolerance) -> "queue_over_capacity";
+                                              high above 1.5 x capacity.
+    quality (month, quarantine_rate):         rate >= quarantine_rate_alert -> "data_incident", high.
+    The first row wins when two produce the same key. Order: severity, kind (KINDS order), subject.
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.alerts.build_alerts")
+    psi_alert = float(cfg["psi_alert"])
+    capacity = float(cfg["review_capacity_per_day"])
+    tolerance = float(cfg.get("queue_tolerance", 0.0))
+    q_limit = float(cfg["quarantine_rate_alert"])
+    out: list[Alert] = []
+    for r in drift.itertuples(index=False):
+        if r.psi >= psi_alert:
+            severity = "high" if r.feature == "score" else "medium"
+            key = alert_key("drift", int(r.month), str(r.feature))
+            out.append(Alert(key, "drift", severity, int(r.month), str(r.feature), float(r.psi), psi_alert))
+    for r in queue.itertuples(index=False):
+        if r.review_count > capacity * (1 + tolerance):
+            severity = "high" if r.review_count > 1.5 * capacity else "medium"
+            key = alert_key("queue_over_capacity", int(r.month), str(r.day))
+            out.append(
+                Alert(key, "queue_over_capacity", severity, int(r.month), str(r.day), float(r.review_count), capacity)
+            )
+    for r in quality.itertuples(index=False):
+        if r.quarantine_rate >= q_limit:
+            subject = f"month={int(r.month):02d}"
+            key = alert_key("data_incident", int(r.month), subject)
+            out.append(Alert(key, "data_incident", "high", int(r.month), subject, float(r.quarantine_rate), q_limit))
+    unique: dict[str, Alert] = {}
+    for a in out:
+        unique.setdefault(a.alert_key, a)  # first row wins
+    return sorted(unique.values(), key=lambda a: (SEVERITY_ORDER[a.severity], KINDS.index(a.kind), a.subject))
 
 
 def format_alert_message(alert: Alert, runbook_base_url: str) -> str:
-    """Phase 8b · TODO(Agatha): the WhatsApp text for one alert (Indonesian, plain text).
+    """The WhatsApp text for one alert (Indonesian, plain text, at most 1024 characters).
 
-    Must contain, each on its own line:
-      1. "[SIGAP] " + KIND_LABEL_ID[alert.kind] + " · " + alert.severity.upper()
-      2. the subject and the month, e.g. "Subjek: score · bulan 6"
-      3. value and threshold with 3 decimals for floats below 1 (PSI, rates) and no decimals otherwise,
-         e.g. "Nilai: 0.312 (batas 0.250)" or "Nilai: 260 (batas 200)"
-      4. "Runbook: " + runbook_base_url + "#" + alert.kind
-    At most 1024 characters (the body limit of a WhatsApp interactive message). No personal data can appear
-    here by construction: alerts are aggregates.
-    Test: tests/test_p8b_ops.py::test_format_alert_message
+    Alerts are aggregates (a feature, a day, a month), so no personal data can appear here by construction.
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.alerts.format_alert_message")
+
+    def num(x: float) -> str:
+        return f"{x:.3f}" if abs(x) < 1 else f"{x:.0f}"
+
+    lines = [
+        f"[SIGAP] {KIND_LABEL_ID[alert.kind]} · {alert.severity.upper()}",
+        f"Subjek: {alert.subject} · bulan {alert.month}",
+        f"Nilai: {num(alert.value)} (batas {num(alert.threshold)})",
+        f"Runbook: {runbook_base_url}#{alert.kind}",
+    ]
+    return "\n".join(lines)[:1024]

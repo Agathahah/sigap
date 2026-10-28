@@ -4,6 +4,7 @@
     POST /v1/score    body: ApplicationIn (+ optional header X-Application-Id), header X-API-Key
                       -> ScoreOut: calibrated score, decision band, top 3 reason codes, latency
     GET  /v1/model    -> version, thresholds, feature-list hash, gate result, trained_at
+    /v1/ops/*         -> alerts and review cases for n8n (sigap.serve.ops, separate key SIGAP_OPS_API_KEY)
 
 Design:
   - The model, the decision bands and the prior-rate lookup are loaded once at startup from models/current/
@@ -33,6 +34,7 @@ import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 
 from sigap import config
+from sigap.serve.ops import router as ops_router
 from sigap.serve.schemas import ApplicationIn, ModelInfo, ScoreOut
 
 log = logging.getLogger("sigap.api")
@@ -82,6 +84,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="SIGAP scoring API", version="1.0", lifespan=lifespan)
+app.include_router(ops_router)  # /v1/ops/*: alerts and review cases for n8n, with its own API key
 
 
 def require_model() -> dict:

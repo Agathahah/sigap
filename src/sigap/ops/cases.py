@@ -1,4 +1,4 @@
-"""Phase 8b · Review cases: who looks at what today, and what an analyst is allowed to decide.
+"""Review cases: who looks at what today, and what an analyst is allowed to decide.
 
 Business rules:
   - The review band of phase 6 creates more cases than the team can handle on busy days. The riskiest cases are
@@ -21,45 +21,56 @@ PAYLOAD_FIELDS = ("case_id", "application_id", "day", "score", "decision_band", 
 
 
 class InvalidTransition(ValueError):
-    """Provided. Raised when an outcome is not allowed from the current status (the API maps it to HTTP 409)."""
+    """Raised when an outcome is not allowed from the current status (the API maps it to HTTP 409)."""
 
 
 def assign_cases(reviews: pd.DataFrame, capacity: int) -> pd.DataFrame:
-    """Phase 8b · TODO(Agatha): assign the riskiest reviews of each day, up to capacity.
+    """Assign the riskiest reviews of each day up to capacity; the rest go to the backlog.
 
-    reviews: columns case_id, application_id, day, score (one row per review case).
-    For each day separately:
-      - order by score descending, ties by case_id ascending (deterministic)
-      - priority = 1, 2, 3, ... in that order
-      - status = "assigned" for priority <= capacity, else "backlog"
-    Return a new DataFrame with all input columns + priority + status, sorted by day then priority,
-    with a fresh RangeIndex. Do not modify the input. capacity must be >= 0 (ValueError otherwise).
-    Tests: tests/test_p8b_ops.py::test_assign_cases_*
+    Per day: order by score (highest first, ties by case_id), priority 1, 2, 3, ...; status "assigned" for
+    priority <= capacity, else "backlog". Returns a new frame sorted by day and priority; the input is unchanged.
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.cases.assign_cases")
+    if capacity < 0:
+        raise ValueError("capacity must be >= 0")
+    out = reviews.sort_values(["day", "score", "case_id"], ascending=[True, False, True]).copy()
+    out["priority"] = out.groupby("day").cumcount() + 1
+    out["status"] = ["assigned" if p <= capacity else "backlog" for p in out["priority"]]
+    return out.reset_index(drop=True)
 
 
 def next_status(current: str, outcome: str) -> str:
-    """Phase 8b · TODO(Agatha): the case state machine.
+    """The case state machine.
 
-      assigned | backlog | pending_info  + confirmed_fraud -> closed_fraud
-      assigned | backlog | pending_info  + legit           -> closed_legit
-      assigned | backlog                 + need_info       -> pending_info
-      pending_info                       + need_info       -> InvalidTransition (ask once, then decide)
-      closed_*                           + anything        -> InvalidTransition
-    Unknown status or outcome -> ValueError (bad input, HTTP 422), not InvalidTransition.
-    Test: tests/test_p8b_ops.py::test_next_status
+    open (assigned, backlog, pending_info) + confirmed_fraud -> closed_fraud
+    open + legit -> closed_legit;  assigned/backlog + need_info -> pending_info
+    pending_info + need_info and any closed case -> InvalidTransition (ask once, then decide; no re-opening).
+    Unknown status or outcome -> ValueError (bad input).
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.cases.next_status")
+    if current not in OPEN_STATUSES + CLOSED_STATUSES:
+        raise ValueError(f"unknown status {current!r}")
+    if outcome not in OUTCOMES:
+        raise ValueError(f"unknown outcome {outcome!r}")
+    if current in CLOSED_STATUSES:
+        raise InvalidTransition(f"case is {current}; a closed case cannot be decided again")
+    if outcome == "confirmed_fraud":
+        return "closed_fraud"
+    if outcome == "legit":
+        return "closed_legit"
+    if current == "pending_info":
+        raise InvalidTransition("information was already requested once; decide fraud or legit")
+    return "pending_info"
 
 
 def case_payload(row: dict) -> dict:
-    """Phase 8b · TODO(Agatha): what n8n (and therefore WhatsApp) may see about a case.
+    """What may leave SIGAP about a case (to n8n, and so to WhatsApp): PAYLOAD_FIELDS only.
 
-    - Keep only PAYLOAD_FIELDS that are present in row (missing ones are simply absent).
-    - score rounded to 2 decimals; reasons cut to at most 3 items (list of reason codes from phase 5).
-    - Everything else is dropped: protected attributes (customer_age, income, employment_status), raw features,
-      notes. Allowlist, not denylist: a column added next month must not leak by accident.
-    Test: tests/test_p8b_ops.py::test_case_payload_allowlist
+    Score rounded to 2 decimals, at most 3 reason codes. An allowlist, so a column added later never leaks.
     """
-    raise NotImplementedError("TODO(Agatha) phase 8b: sigap.ops.cases.case_payload")
+    payload = {k: row[k] for k in PAYLOAD_FIELDS if k in row}
+    if "score" in payload:
+        payload["score"] = round(float(payload["score"]), 2)
+    if "reasons" in payload:
+        payload["reasons"] = list(payload["reasons"])[:3]
+    if "day" in payload:
+        payload["day"] = str(payload["day"])
+    return payload

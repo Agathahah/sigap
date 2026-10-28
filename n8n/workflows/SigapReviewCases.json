@@ -1,0 +1,199 @@
+{
+  "name": "SIGAP · review cases",
+  "id": "SigapReviewCases",
+  "nodes": [
+    {
+      "id": "b2d453a4-4841-4b00-a02d-b488a40300a9",
+      "name": "Weekdays 08:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "20170ce4-3606-47ac-81cd-d8ce953ef049",
+      "name": "Get assigned cases",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $env.SIGAP_API_URL }}/v1/ops/cases?status=assigned&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "aa60257a-1c1a-4b96-8526-9c4f69836bd2",
+      "name": "One summary message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const cases = $input.all().map((item) => item.json);\nif (cases.length === 0) {\n  return [];\n}\nconst lines = cases.map((c) => `- ${c.case_id} · skor ${c.score} · ${(c.reasons || []).join('; ')}`);\nconst form = ($env.WEBHOOK_URL || 'http://localhost:5678/') + 'form/sigap-decision';\nconst message = [`[SIGAP] ${cases.length} kasus menunggu review (prioritas tertinggi)`, ...lines, `Putuskan di: ${form}`].join('\\n');\nreturn [{ json: { message } }];"
+      }
+    },
+    {
+      "id": "f3abffb7-1f75-41b2-9650-7dbf868927c4",
+      "name": "Send WhatsApp summary",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $env.SIGAP_WA_PHONE_NUMBER_ID }}",
+        "recipientPhoneNumber": "={{ $env.SIGAP_ANALYST_WHATSAPP }}",
+        "textBody": "={{ $json.message }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "19d08852-4cc0-4e59-88a0-b45c42631dd4",
+      "name": "Decision form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        260
+      ],
+      "webhookId": "d519d16c-4390-4cb8-8d70-d50fb3fca778",
+      "parameters": {
+        "formTitle": "SIGAP · keputusan kasus review",
+        "formDescription": "Satu keputusan per kasus. Jangan menulis data pribadi nasabah di catatan.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "case_id",
+              "placeholder": "case-...",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "outcome",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "confirmed_fraud"
+                  },
+                  {
+                    "option": "legit"
+                  },
+                  {
+                    "option": "need_info"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "analyst_id",
+              "placeholder": "agatha.s",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "note",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {
+          "path": "sigap-decision"
+        }
+      }
+    },
+    {
+      "id": "355a2e8b-46a1-4f3c-ae9d-49536378be54",
+      "name": "Post decision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SIGAP_API_URL }}/v1/ops/cases/{{ $json.case_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ outcome: $json.outcome, analyst_id: $json.analyst_id, note: $json.note || null }) }}",
+        "options": {}
+      },
+      "notes": "The API validates the body (422), refuses impossible transitions (409) and ignores exact retries."
+    }
+  ],
+  "connections": {
+    "Weekdays 08:30": {
+      "main": [
+        [
+          {
+            "node": "Get assigned cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get assigned cases": {
+      "main": [
+        [
+          {
+            "node": "One summary message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One summary message": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision form": {
+      "main": [
+        [
+          {
+            "node": "Post decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Jakarta"
+  },
+  "active": false,
+  "pinData": {}
+}

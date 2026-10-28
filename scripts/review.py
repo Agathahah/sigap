@@ -374,6 +374,47 @@ def review_p8() -> None:
     check(phase_done("p8"), "p8 in tests/PHASES_DONE", "make phase-done P=8")
 
 
+def review_p8b() -> None:
+    check(tests_pass("p8b"), "make check P=8b green (ops logic, API, workflow exports)", "make check P=8b")
+    sys.path.insert(0, str(ROOT / "src"))
+    stats, err = {}, ""
+    try:
+        import psycopg
+
+        from sigap import config
+
+        dsn = config.database_url().replace("postgresql+psycopg://", "postgresql://", 1)
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            stats["months"] = [r[0] for r in conn.execute("SELECT DISTINCT month FROM ops.review_case ORDER BY 1")]
+            stats["alerts"] = conn.execute("SELECT count(*) FROM ops.alert").fetchone()[0]
+            stats["acked"] = conn.execute("SELECT count(*) FROM ops.alert WHERE acked_at IS NOT NULL").fetchone()[0]
+            stats["decisions"] = conn.execute("SELECT count(*) FROM ops.review_decision").fetchone()[0]
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc).splitlines()[0]
+    check(
+        stats.get("months") == [5, 6, 7],
+        f"review cases for months 5-7 (found {stats.get('months')})",
+        err or "make db-sql F=sql/warehouse/003_ops.sql, then make ops-sync M=5 / M=6 / M=7",
+    )
+    check(stats.get("alerts", 0) > 0, f"alerts stored in ops.alert ({stats.get('alerts', 0)})", "make ops-sync M=6")
+    check(
+        stats.get("acked", 0) > 0,
+        f"alerts delivered by n8n and acknowledged ({stats.get('acked', 0)})",
+        "run the alert-router workflow in n8n",
+    )
+    check(
+        stats.get("decisions", 0) > 0,
+        f"analyst decisions through the form ({stats.get('decisions', 0)})",
+        "submit the n8n decision form once",
+    )
+    adr = read("docs/adr/0007-ops-automation-n8n-whatsapp.md")
+    check("## Decision" in adr and not PLACEHOLDER.search(adr), "ADR 0007 written", "docs/adr/0007-...md")
+    runbook = read("docs/RUNBOOK.md")
+    routing = runbook.split("## Alert routing")[1].split("\n## ")[0] if "## Alert routing" in runbook else ""
+    check(bool(routing) and not PLACEHOLDER.search(routing), "RUNBOOK: alert routing filled", "docs/RUNBOOK.md")
+    check(phase_done("p8b"), "p8b in tests/PHASES_DONE", "make phase-done P=8b")
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -384,6 +425,7 @@ REVIEWS = {
     "6": review_p6,
     "7": review_p7,
     "8": review_p8,
+    "8b": review_p8b,
 }
 
 
