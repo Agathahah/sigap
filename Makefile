@@ -84,8 +84,8 @@ features: ## model matrix -> data/gold/features.parquet
 # ---------- phase 5 · model ----------
 train: ## train + calibrate + threshold + gate + MLflow
 	$(PY) -m sigap.train.train
-mlflow: ## MLflow UI on http://127.0.0.1:5000
-	.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db
+mlflow: ## MLflow UI on http://127.0.0.1:5050 (port 5000 is taken by AirPlay Receiver on macOS)
+	.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5050
 
 # ---------- phase 6 · decision policy ----------
 policy: ## cost-based bands, champion vs challenger, sensitivity
