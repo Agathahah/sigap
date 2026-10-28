@@ -1,0 +1,42 @@
+# Model matrix (feature engineering stage). Column names are silver columns; categories come from the data
+# contract so that training and the API produce exactly the same one-hot columns.
+
+numeric:
+  - income
+  - name_email_similarity
+  - prev_address_months_count
+  - current_address_months_count
+  - customer_age
+  - days_since_request
+  - intended_balcon_amount
+  - zip_count_4w
+  - velocity_6h
+  - velocity_24h
+  - velocity_4w
+  - bank_branch_count_8w
+  - date_of_birth_distinct_emails_4w
+  - credit_risk_score
+  - email_is_free
+  - phone_home_valid
+  - phone_mobile_valid
+  - bank_months_count
+  - has_other_cards
+  - proposed_credit_limit
+  - foreign_request
+  - session_length_in_minutes
+  - keep_alive_session
+  - device_distinct_emails_8w
+
+categorical: [payment_type, employment_status, housing_status, source, device_os]
+
+# Not features: device_fraud_count is constant (0) in Base.
+excluded: [device_fraud_count]
+
+# Kept in the matrix so the training stage can measure fairness and decide whether to train with or without them
+# (ADR 0005). Never sent to the copilot or to messaging channels.
+protected: [customer_age, income, employment_status]
+
+# prior_rate_<column>: point-in-time fraud rate of the category, smoothed toward the global rate.
+prior_rate:
+  columns: [payment_type, device_os]
+  smoothing_m: 100

@@ -40,3 +40,23 @@ def test_rule_report_numbers():
     assert rep.loc["device_fraud", "fpr"] == pytest.approx(0.25)
     assert rep.loc["any_rule", "recall"] == pytest.approx(1.0)
     assert rep.loc["any_rule", "alert_rate"] == pytest.approx(0.5)
+
+
+def test_rules_yaml_runs_on_silver_columns():
+    """Every active rule is valid on a silver-shaped row and has a rationale; no protected attribute is used."""
+    from sigap import config
+    from sigap.quality.contract import load_contract
+    from sigap.rules.engine import load_rules
+
+    contract = load_contract(config.CONFIGS / "data_contract.yaml")
+    row = {}
+    for col, rule in contract["columns"].items():
+        row[col] = rule["allowed"][0] if "allowed" in rule else rule.get("min", 0)
+    row.update({f"{c}_missing": 0 for c in contract["sentinels"]})
+    rules = load_rules()
+    assert 5 <= len(rules) <= 8
+    hits = apply_rules(pd.DataFrame([row]), rules)
+    assert list(hits.columns) == [r["name"] for r in rules] + ["any_rule"]
+    for r in rules:
+        assert r.get("rationale"), f"{r['name']} needs a rationale"
+        assert not any(p in r["when"] for p in ("customer_age", "income", "employment_status")), r["name"]

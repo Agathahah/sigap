@@ -80,3 +80,14 @@ def test_build_features_contract():
         "prior_rate_device_os",
     ]
     assert "is_fraud" not in out.columns and len(out) == 10
+
+
+def test_feature_config_matches_contract():
+    from sigap import config
+    from sigap.quality.contract import load_contract
+
+    numeric, categories, cfg = build.load_feature_config()
+    contract = load_contract(config.CONFIGS / "data_contract.yaml")["columns"]
+    used = set(numeric) | set(categories) | set(cfg["excluded"]) | {config.ID, config.MONTH}
+    assert used == set(contract), f"not covered: {set(contract) - used}, unknown: {used - set(contract)}"
+    assert not set(numeric) & set(cfg["excluded"])

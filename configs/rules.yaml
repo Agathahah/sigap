@@ -1,11 +1,44 @@
-# Rule baseline (phase 4): what a fraud team would run before any model.
-# Each rule: name, when (pandas query on silver columns), rationale (why a fraud analyst would write it).
-# TODO(Agatha) phase 4: write 5-8 rules from your EDA findings, measure them with `make rules`, tune, log changes.
+# Rule baseline: the policy a fraud team would run before any model ("champion").
+# Each rule: name, when (pandas expression on silver columns), rationale (why an analyst would write it).
+# Silver turns sentinels into NULL plus a `<column>_missing` flag (0/1); a comparison with NULL never fires.
+# Tuned on training months 0-4 only; measured once on month 5. Log every change in docs/04_DECISION_POLICY.md.
+# Protected attributes (customer_age, income, employment_status) are not used in rules.
 
 rules:
+  - name: top_credit_limit
+    when: "proposed_credit_limit >= 1900"
+    rationale: >-
+      A brand-new account asking for the top of the limit range (1,900-2,100). Fraud rate about 12% vs 1% overall
+      in months 0-4: very precise, small volume.
+  - name: shared_device_no_keepalive
+    when: "keep_alive_session == 0 and device_distinct_emails_8w >= 2"
+    rationale: >-
+      The device has been used with two or more e-mail addresses in 8 weeks and the session was not kept alive:
+      the pattern of one operator opening several accounts.
+  - name: high_score_windows
+    when: "credit_risk_score >= 250 and device_os == 'windows'"
+    rationale: >-
+      Combines the internal risk score (top of its range, where fraud is about 3x the average) with the device
+      that carries most fraud (EDA F2). Neither alone is precise enough.
+  - name: unmatched_free_email_high_score
+    when: "email_is_free == 1 and name_email_similarity < 0.2 and credit_risk_score >= 250"
+    rationale: >-
+      Free e-mail whose address barely matches the applicant's name, on a high internal risk score: typical of
+      e-mail addresses created for a stolen or synthetic identity.
+  - name: ba_windows_no_history
+    when: "housing_status == 'BA' and device_os == 'windows' and prev_address_months_count_missing == 1"
+    rationale: >-
+      The three strongest single signals from EDA (F3 housing BA, F2 windows, F1 no previous address) combined.
+      Largest rule by volume; housing status can act as a wealth proxy, so its false positives are checked in
+      the fairness review.
+
+# Measured and switched off (kept so the decision is visible). Not evaluated by `make rules`.
+retired:
   - name: device_seen_with_fraud
     when: "device_fraud_count > 0"
-    rationale: "Device already linked to a confirmed fraud case."
+    reason: "device_fraud_count is 0 in every Base row (data card): the rule can never fire."
   - name: application_burst
     when: "velocity_6h > 3 * velocity_4w"
-    rationale: "Applications in the last 6h are 3x the 4-week hourly normal (possible bot or fraud ring)."
+    reason: >-
+      Months 0-4: 0.21% alerts, hit rate 0.43% (below the 1.0% base rate), recall 0.1%. High velocity goes with
+      LESS fraud in BAF (EDA F5).
