@@ -84,15 +84,17 @@ CREATE INDEX IF NOT EXISTS ix_fact_channel ON gold.fact_application (channel_key
 
 -- Operational tables -----------------------------------------------------------------------------------------
 -- One row per scoring decision (written by the API and the monthly replay). Append-only.
+-- application_id is not a foreign key: the API decides before the application reaches the warehouse.
 CREATE TABLE IF NOT EXISTS ops.decision_log (
     id             BIGSERIAL PRIMARY KEY,
-    application_id TEXT NOT NULL REFERENCES gold.fact_application (application_id),
+    application_id TEXT NOT NULL,
     model_version  TEXT NOT NULL,
     score          DOUBLE PRECISION NOT NULL CHECK (score BETWEEN 0 AND 1),
     decision       TEXT NOT NULL CHECK (decision IN ('approve', 'review', 'decline')),
     reasons        TEXT[] NOT NULL DEFAULT '{}',   -- reason codes, never raw feature values
     decided_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE ops.decision_log DROP CONSTRAINT IF EXISTS decision_log_application_id_fkey;  -- databases created earlier
 CREATE INDEX IF NOT EXISTS ix_decision_app  ON ops.decision_log (application_id);
 CREATE INDEX IF NOT EXISTS ix_decision_time ON ops.decision_log (decided_at);
 

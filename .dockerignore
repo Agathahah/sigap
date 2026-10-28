@@ -1,0 +1,18 @@
+# Only src/, configs/ and requirements-serve.txt go into the image.
+.venv
+.git
+data
+models
+mlruns
+mlflow.db
+reports
+notes
+notebooks
+dags
+n8n
+eval
+docs
+tests
+**/__pycache__
+.env
+*.egg-info

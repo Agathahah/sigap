@@ -74,6 +74,60 @@ def build_features(
     return pd.concat(parts, axis=1)
 
 
+def clean_sentinels_frame(df: pd.DataFrame, sentinels: dict[str, str]) -> pd.DataFrame:
+    """pandas version of silver.clean_sentinels for one or a few rows (the API): flag first, then NULL.
+
+    Same rules and same output columns as the Spark job; tests/test_p7_serve.py checks they agree.
+    """
+    out = df.copy()
+    for col, rule in sentinels.items():
+        if col not in out.columns:
+            continue
+        values = pd.to_numeric(out[col], errors="coerce")
+        if rule == "eq_-1":
+            missing = values == -1
+        elif rule == "lt_0":
+            missing = values < 0
+        else:
+            raise ValueError(f"unknown sentinel rule {rule!r} for {col}")
+        out[f"{col}_missing"] = missing.fillna(False).astype(int)
+        out[col] = values.mask(missing)
+    return out
+
+
+def prior_rate_table(
+    df: pd.DataFrame, col: str, as_of: int, lag_months: int = config.LABEL_LAG_MONTHS, m: float = 100.0
+) -> dict:
+    """The prior_rate lookup a scorer uses at month `as_of`: smoothed rate per category from rows with
+    month <= as_of - lag (the same formula as prior_rate), plus the global rate for unseen categories."""
+    known = df[df[config.MONTH] <= as_of - lag_months]
+    if known.empty:
+        raise ValueError(f"no labelled rows at or before month {as_of - lag_months}")
+    g = float(known[config.LABEL].mean())
+    per_cat = known.groupby(col, observed=True)[config.LABEL].agg(n="size", f="sum")
+    rates = ((per_cat["f"] + m * g) / (per_cat["n"] + m)).astype(float)
+    return {"rates": {str(k): float(v) for k, v in rates.items()}, "global": g}
+
+
+def serving_frame(
+    raw: pd.DataFrame,
+    numeric: list[str],
+    categories: dict[str, list[str]],
+    prior_tables: dict[str, dict],
+    sentinels: dict[str, str],
+) -> pd.DataFrame:
+    """Model matrix for applications as the source system sends them (sentinels as -1), for the API and batch
+    scoring: the same cleaning, one-hot and velocity_ratio as training; prior rates from the saved lookup."""
+    df = clean_sentinels_frame(raw, sentinels)
+    flags = [f"{c}_missing" for c in sentinels if f"{c}_missing" in df.columns]
+    priors = {
+        f"prior_rate_{c}": df[c].astype(str).map(t["rates"]).astype(float).fillna(t["global"])
+        for c, t in prior_tables.items()
+    }
+    parts = [df[[*numeric, *flags]], one_hot(df, categories), velocity_ratio(df), pd.DataFrame(priors, index=df.index)]
+    return pd.concat(parts, axis=1)
+
+
 def load_feature_config() -> tuple[list[str], dict[str, list[str]], dict]:
     """Numeric columns, categories (allowed values from the data contract) and the full feature config."""
     from sigap.quality.contract import load_contract

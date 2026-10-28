@@ -324,9 +324,13 @@ def main() -> None:
 
             MlflowClient().set_registered_model_alias(f"sigap-{slug}", "champion", info.registered_model_version)
             folder = config.MODELS / "current"
+            sigap_model.save(folder)
+            from sigap.serve.prepare import write_prior_tables
+
+            write_prior_tables(folder, slug)  # the API's prior-rate lookup travels with the model
         else:
             folder = config.MODELS / "rejected" / version
-        sigap_model.save(folder)
+            sigap_model.save(folder)
 
     print(f"\nthreshold (calibrated score, 5% FPR on month 5): {threshold:.4f}")
     rows = [

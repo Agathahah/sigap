@@ -7,8 +7,8 @@ Point-in-time labels: the warehouse is built "as of" the latest month in silver.
 `available_month <= as_of`; every other application keeps `is_fraud = NULL`, and `dim_month.label_complete`
 says which months are fully labelled. Re-running after the next drop fills in the labels that have arrived.
 
-Idempotent without TRUNCATE: dimensions insert new natural keys only (keys never change), the fact is upserted
-on application_id. TRUNCATE would cascade into ops.decision_log, which references the fact.
+Idempotent without TRUNCATE: dimensions insert new natural keys only (keys never change) and the fact is upserted
+on application_id, so earlier decisions in ops.decision_log keep matching their applications.
 
 Run:  make db-up && make gold
 """

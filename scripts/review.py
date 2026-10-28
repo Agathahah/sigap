@@ -275,6 +275,50 @@ def review_p6() -> None:
     check(phase_done("p6"), "p6 in tests/PHASES_DONE", "make phase-done P=6")
 
 
+def review_p7() -> None:
+    check(tests_pass("p7"), "make check P=7 green", "make check P=7")
+    cur = ROOT / "models" / "current"
+    check((cur / "prior_rates.json").exists(), "serving lookup next to the model (prior_rates.json)", "make serve-prep")
+    df = read("Dockerfile")
+    ok = all(k in df for k in ("USER ", "HEALTHCHECK", "libgomp1", "requirements-serve.txt")) and "COPY data" not in df
+    check(ok, "Dockerfile: non-root user, healthcheck, OpenMP, serve-only requirements", "Dockerfile")
+    try:
+        image = subprocess.run(["docker", "image", "inspect", "sigap-api:local"], capture_output=True)  # noqa: S607
+        built = image.returncode == 0
+    except FileNotFoundError:
+        built = False
+    check(built, "Docker image sigap-api:local built", "make docker-build")
+    lat_path = ROOT / "reports" / "serve" / "latency.json"
+    lat = json.loads(lat_path.read_text()) if lat_path.exists() else {}
+    p95 = lat.get("round_trip_ms", {}).get("p95")
+    check(
+        bool(lat) and lat.get("errors") == 0 and p95 is not None and p95 < 100,
+        f"load test: 0 errors and p95 < 100 ms (p95 {p95} ms)",
+        "make serve (or make docker-run), then make load-test in a second terminal",
+    )
+    sys.path.insert(0, str(ROOT / "src"))
+    err = ""
+    try:
+        import psycopg
+
+        from sigap import config
+
+        dsn = config.database_url().replace("postgresql+psycopg://", "postgresql://", 1)
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            n_log = conn.execute("SELECT count(*) FROM ops.decision_log").fetchone()[0]
+    except Exception as exc:  # noqa: BLE001
+        n_log, err = 0, str(exc).splitlines()[0]
+    check(n_log > 0, f"decisions logged in ops.decision_log ({n_log:,} rows)", err or "make load-test with the API on")
+    runbook = read("docs/RUNBOOK.md")
+    api = runbook.split("## Scoring API")[1].split("\n## ")[0] if "## Scoring API" in runbook else ""
+    check(
+        bool(re.search(r"p95[^\n]*\d", api)) and not PLACEHOLDER.search(api),
+        "RUNBOOK: API section with measured latency",
+        "docs/RUNBOOK.md",
+    )
+    check(phase_done("p7"), "p7 in tests/PHASES_DONE", "make phase-done P=7")
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -283,6 +327,7 @@ REVIEWS = {
     "4": review_p4,
     "5": review_p5,
     "6": review_p6,
+    "7": review_p7,
 }
 
 

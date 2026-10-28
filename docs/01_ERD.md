@@ -101,9 +101,11 @@ erDiagram
   system, not by the batch pipeline, and are kept apart from the analytical `gold` schema.
 - **Analyst decisions are not labels.** `review_decision` records what an analyst concluded for a reviewed case;
   it never overwrites `fact_application.is_fraud`.
+- **Decision log without a foreign key.** The API decides before an application reaches the warehouse, so
+  `ops.decision_log.application_id` is a logical link to the fact table, not an enforced one.
 - **Stable surrogate keys.** Dimension keys are identity columns and new categories are inserted with
   `ON CONFLICT DO NOTHING`, so a key never changes after it is assigned. The fact is upserted on
-  `application_id`; the load never truncates, because `ops.decision_log` references the fact.
+  `application_id`; the load never truncates, so decisions logged for loaded applications keep their match.
 - **Point in time.** The warehouse is built as of the latest month in silver: a label is joined only when
   `available_month <= as_of`. With 8 months and a 2-month lag, months 0–5 are labelled and months 6–7 are not
   yet; re-running after the next drop fills them in.

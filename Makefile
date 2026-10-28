@@ -92,14 +92,18 @@ policy: ## cost-based bands, champion vs challenger, sensitivity
 	$(PY) -m sigap.policy.simulate
 
 # ---------- phase 7 · serving ----------
+serve-prep: ## prior-rate lookup for the API -> models/current/prior_rates.json
+	$(PY) -m sigap.serve.prepare
 serve: ## API on http://127.0.0.1:8000/docs
 	.venv/bin/uvicorn sigap.serve.app:app --reload --port 8000
-load-test: ## p50/p95/p99 latency of the running API
+load-test: ## p50/p95/p99 latency of the running API (N=500)
 	$(PY) scripts/load_test.py
 docker-build: ## API image
 	docker build -t sigap-api:local .
-docker-run: ## run the image with the current model mounted read-only
-	docker run --rm -p 8000:8000 --env-file .env -v $(PWD)/models/current:/app/models/current:ro sigap-api:local
+docker-run: ## run the image with the current model mounted read-only (Postgres reached via host.docker.internal)
+	docker run --rm --name sigap-api -p 8000:8000 --env-file .env \
+	  -e SIGAP_DB_URL="$(subst localhost,host.docker.internal,$(SIGAP_DB_URL))" \
+	  -v "$(CURDIR)/models/current:/app/models/current:ro" sigap-api:local
 
 # ---------- phase 8 · monitoring ----------
 replay: ## months 5-7 as if live: score, drift, late labels, retraining rule

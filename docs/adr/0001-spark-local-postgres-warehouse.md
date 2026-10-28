@@ -30,7 +30,7 @@ into Postgres 16 with pgvector, running in Docker.
 ## Consequences
 - **Idempotent by design.** Bronze and silver overwrite month partitions dynamically; gold inserts new
   dimension members only and upserts the fact on `application_id`, so re-running a month gives the same tables.
-  Gold never truncates, because `ops.decision_log` references the fact.
+  Gold never truncates, so a reload keeps the fact rows that logged decisions point to.
 - **Explicit schema.** Bronze reads with the schema built from `configs/data_contract.yaml` (`FAILFAST`, header
   checked against the schema); no type inference on incoming data.
 - **Point-in-time labels.** Gold joins a label only when `available_month <= as_of`; `dim_month.label_complete`
