@@ -32,8 +32,16 @@ a single drifting input can leave the score stable.
 | API p95 latency | > 100 ms | `make load-test`: server-side vs round-trip time; container CPU and memory | add workers or replicas; if the API is down, route to the rules (Fallback) |
 
 ## Alert routing (n8n)
-n8n polls `GET /v1/ops/alerts` every 15 minutes, sends each open alert to WhatsApp and acknowledges it only after
-WhatsApp accepted the message. Alerts are written by `make ops-sync M=<month>` (after `make replay`).
+n8n polls `GET /v1/ops/alerts` every 15 minutes, sends each open alert on the channel set by `SIGAP_ALERT_CHANNEL`
+(`email` by default, `whatsapp` once a business number in the recipient's country is registered) and acknowledges
+it only after that channel accepted the message. Alerts are written by `make ops-sync M=<month>` (after
+`make replay`).
+
+**A WhatsApp alert was acknowledged but never arrived:** "accepted" is not "delivered". Open the delivery status
+in Meta (App → WhatsApp → test webhooks, or the status webhook in production) and look at `statuses[].errors`.
+Error 130497 means the business number's country may not message the recipient's country: switch to
+`SIGAP_ALERT_CHANNEL=email`, recreate n8n, and reopen the affected alerts:
+`UPDATE ops.alert SET acked_at = NULL, channel = NULL WHERE channel = 'whatsapp';`
 
 | Alert kind | Goes to | Expected first action | Silence rule |
 |---|---|---|---|

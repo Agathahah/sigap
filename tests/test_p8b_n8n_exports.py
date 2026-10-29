@@ -20,6 +20,7 @@ SECRET_PATTERNS = {
     "Anthropic key": re.compile(r"sk-ant-[A-Za-z0-9_-]{10,}"),
     "Bearer token literal": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}"),
     "Indonesian phone number": re.compile(r"(?<![\d])(?:\+?62|0)8\d{8,11}(?![\d])"),
+    "e-mail address": re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z.]{2,}"),
 }
 
 
@@ -71,3 +72,20 @@ def test_workflows_use_ops_api_and_a_channel():
     assert any("whatsapp" in t or "gmail" in t or "emailsend" in t for t in types), "no WhatsApp (or email) node"
     assert any("httprequest" in t for t in types), "no HTTP Request node calling the SIGAP API"
     assert not any("postgres" in t for t in types), "n8n must not talk to the warehouse directly (ADR 0007)"
+
+
+def test_every_message_has_both_channels_behind_one_switch():
+    """WhatsApp to +62 is blocked from a non-Indonesian test number (error 130497), so each workflow that sends
+    a message has a WhatsApp and an e-mail node behind one IF on $env.SIGAP_ALERT_CHANNEL (ADR 0007)."""
+    for f, wf in _workflows():
+        types = [n.get("type", "").lower() for n in wf["nodes"]]
+        if not any("whatsapp" in t for t in types):
+            continue
+        assert any("emailsend" in t for t in types), f"{f.name}: WhatsApp node without the e-mail fallback"
+        ifs = [n for n in wf["nodes"] if n.get("type") == "n8n-nodes-base.if"]
+        assert any("$env.SIGAP_ALERT_CHANNEL" in json.dumps(n["parameters"]) for n in ifs), (
+            f"{f.name}: channel must be chosen by $env.SIGAP_ALERT_CHANNEL, not hard-coded"
+        )
+        for n in wf["nodes"]:
+            if n.get("type") == "n8n-nodes-base.emailSend":
+                assert "$env.SIGAP_ANALYST_EMAIL" in n["parameters"].get("toEmail", ""), f"{f.name}: {n['name']}"

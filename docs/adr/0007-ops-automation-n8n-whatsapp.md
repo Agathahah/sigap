@@ -30,14 +30,27 @@
 ## Decision
 n8n delivers alerts and review summaries over the official WhatsApp Cloud API and collects analyst decisions with
 an n8n form, talking to SIGAP only through `/v1/ops/*` with its own API key; Airflow and `make` keep the data
-pipeline.
+pipeline. One switch, `SIGAP_ALERT_CHANNEL` (`whatsapp` | `email`), picks the channel for both workflows; e-mail
+(Gmail SMTP) is the default until a WhatsApp business number in the recipient's country is registered.
+
+### What the test number showed (29 Oct 2026)
+The Meta test number is a US number. Every message to an Indonesian (+62) recipient was accepted by the API
+(a `wamid` came back, so n8n acknowledged the alert) and then failed in the status webhook with error **130497**,
+"Business account is restricted from messaging users in this country", the same for the `hello_world` template
+and for free-form text inside the 24-hour window. Meta restricts cross-border messaging for users in Indonesia,
+so the test number cannot reach an Indonesian analyst whatever the code does.
 
 ## Consequences
 - **What n8n can see:** alert texts (aggregates: a feature, a day, a month) and an allowlisted case payload
   (case id, application id, day, score, decision band, top 3 reason codes). No protected attributes, no raw
   features, no database credentials. The ops key cannot score applications.
-- **Once, not 96 times:** each alert has a stable `alert_key`; it is acknowledged only after WhatsApp accepted the
-  message, so a failed send is retried at the next poll and a delivered one is never repeated.
+- **Once, not 96 times:** each alert has a stable `alert_key`; it is acknowledged only after the channel accepted
+  the message, so a failed send is retried at the next poll and an accepted one is never repeated.
+- **Accepted is not delivered:** for WhatsApp, "accepted" means Meta queued the message. The 130497 failures above
+  arrived after the acknowledgement, so 12 alerts were marked handled that nobody saw. A bank deployment would
+  acknowledge on the `delivered` status webhook (a public HTTPS endpoint) and fall back to e-mail on `failed`;
+  this local demo cannot receive Meta webhooks, so it uses one channel at a time and the runbook explains how to
+  reopen alerts.
 - **Audit:** every analyst decision is a row in `ops.review_decision` (append-only); closed cases cannot be
   reopened; an exact retry from n8n is recognised and not written twice.
 - **Selective labels:** analyst outcomes are early labels for reviewed cases only. They are reported as such and
@@ -51,5 +64,8 @@ pipeline.
 - WhatsApp Cloud API, get started: https://developers.facebook.com/docs/whatsapp/cloud-api/get-started
 - WhatsApp pricing: https://developers.facebook.com/docs/whatsapp/pricing
 - n8n WhatsApp Business Cloud node: https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.whatsapp/
+- WhatsApp Cloud API error codes (130497): https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes
+- WhatsApp status webhook: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/messages/status
+- n8n Send Email node: https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.sendemail/
 - n8n Form Trigger: https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.formtrigger/
 - Lakkaraju et al. (2017). The Selective Labels Problem. KDD. https://doi.org/10.1145/3097983.3098066

@@ -29,10 +29,12 @@ services:
       WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}   # use your Mac's LAN IP so your phone can reach it
       N8N_SECURE_COOKIE: "false"                         # local http only; never on a public server
       N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"              # workflows read the 3 SIGAP_* values below via $env
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"              # workflows read the SIGAP_* values below via $env
       SIGAP_API_URL: ${SIGAP_API_URL_FOR_N8N:-http://host.docker.internal:8000}   # 8001 = make ops-demo
       SIGAP_ANALYST_WHATSAPP: ${SIGAP_ANALYST_WHATSAPP}  # your number, from .env (never in the workflow JSON)
       SIGAP_WA_PHONE_NUMBER_ID: ${SIGAP_WA_PHONE_NUMBER_ID}
+      SIGAP_ALERT_CHANNEL: ${SIGAP_ALERT_CHANNEL:-email} # whatsapp | email (ADR 0007)
+      SIGAP_ANALYST_EMAIL: ${SIGAP_ANALYST_EMAIL}        # sender and recipient of the e-mail channel, from .env
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n/workflows:/backup/workflows

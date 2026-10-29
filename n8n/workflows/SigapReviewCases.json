@@ -52,13 +52,47 @@
       }
     },
     {
+      "id": "2a19f8c3-e09f-417f-b382-2da711c46b85",
+      "name": "Channel",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0ce3424-11ac-43c2-9c74-32c68734bc08",
+              "leftValue": "={{ $env.SIGAP_ALERT_CHANNEL }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "SIGAP_ALERT_CHANNEL in .env: whatsapp -> true branch, anything else (default email) -> false branch."
+    },
+    {
       "id": "f3abffb7-1f75-41b2-9650-7dbf868927c4",
       "name": "Send WhatsApp summary",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1,
       "position": [
-        720,
-        0
+        960,
+        -140
       ],
       "parameters": {
         "operation": "send",
@@ -69,13 +103,34 @@
       }
     },
     {
+      "id": "41d2aed1-0a59-4975-8a5e-8c6c2512d863",
+      "name": "Send email summary",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        140
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.SIGAP_ANALYST_EMAIL }}",
+        "toEmail": "={{ $env.SIGAP_ANALYST_EMAIL }}",
+        "subject": "=[SIGAP] kasus menunggu review",
+        "emailFormat": "text",
+        "text": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "notes": "SMTP credential 'SIGAP Gmail SMTP' (smtp.gmail.com, port 465, SSL, Gmail app password)."
+    },
+    {
       "id": "19d08852-4cc0-4e59-88a0-b45c42631dd4",
       "name": "Decision form",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.2,
       "position": [
         0,
-        260
+        340
       ],
       "webhookId": "d519d16c-4390-4cb8-8d70-d50fb3fca778",
       "parameters": {
@@ -129,7 +184,7 @@
       "typeVersion": 4.2,
       "position": [
         240,
-        260
+        340
       ],
       "parameters": {
         "method": "POST",
@@ -171,7 +226,25 @@
       "main": [
         [
           {
+            "node": "Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Channel": {
+      "main": [
+        [
+          {
             "node": "Send WhatsApp summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send email summary",
             "type": "main",
             "index": 0
           }
