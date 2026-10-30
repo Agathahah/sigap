@@ -80,10 +80,11 @@ def verdict(name_a: str, name_b: str, paired: dict, alpha: float = 0.05) -> str:
     """One sentence for the memo: a difference is claimed only when McNemar's p < alpha."""
     n = sum(paired.values())
     p = mcnemar_exact(paired["a_only"], paired["b_only"])
+    shown = "p<0.001" if p < 0.001 else f"p={p:.3f}"
     if p >= alpha:
-        return f"No clear difference between {name_a} and {name_b} (n={n}, p={p:.3f})."
+        return f"No clear difference between {name_a} and {name_b} (n={n}, {shown})."
     winner, loser = (name_a, name_b) if paired["a_only"] > paired["b_only"] else (name_b, name_a)
-    return f"{winner} passes more cases than {loser} (n={n}, p={p:.3f})."
+    return f"{winner} passes more cases than {loser} (n={n}, {shown})."
 
 
 def hardware() -> str:
