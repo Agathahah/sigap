@@ -129,6 +129,12 @@ def test_graph_ungrounded_twice_refuses():
     assert s["answer"] == REFUSAL_UNGROUNDED and s["stopped_reason"] == "ungrounded" and s["retries"] == 1
 
 
+def test_graph_repeated_ungrounded_number_still_refused():
+    # the retry instruction quotes "0.09"; repeating it must not make it grounded
+    _, s = run([AIMessage("Rate 0.09."), AIMessage("Rate tetap 0.09.")])
+    assert s["answer"] == REFUSAL_UNGROUNDED and s["stopped_reason"] == "ungrounded"
+
+
 def test_graph_stops_at_max_steps():
     llm, s = run([call(i) for i in range(10)], max_steps=3)
     assert s["stopped_reason"] == "max_steps" and s["answer"] == MSG_MAX_STEPS

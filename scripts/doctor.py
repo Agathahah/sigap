@@ -160,6 +160,21 @@ def main(max_phase: float, spark: bool) -> int:
         check("langgraph installed (agent tests)", 9, True, "")
     except ImportError:
         check("langgraph installed (agent tests)", 9, False, "make setup (requirements-dev has it)")
+    pw = env.get("SIGAP_COPILOT_DB_PASSWORD", "")
+    check(
+        "SIGAP_COPILOT_DB_PASSWORD in .env (not change-me)",
+        9,
+        bool(pw) and "change-me" not in pw,
+        "add the line from .env.example, then make env-secrets",
+    )
+    try:
+        import langchain_anthropic  # noqa: F401
+        import pgvector  # noqa: F401
+        import sentence_transformers  # noqa: F401
+
+        check("copilot packages (make llm-setup)", 9, True, "")
+    except ImportError as e:
+        check("copilot packages (make llm-setup)", 9, False, f"make llm-setup ({e.name} missing)")
     check("ollama installed", 9.5, shutil.which("ollama") is not None, "brew install ollama")
 
     # ---- report

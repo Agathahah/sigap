@@ -9,7 +9,9 @@ kaggle.json
 data/
 !data/README.md
 models/
-reports/
+reports/*
+!reports/copilot_eval/
+reports/copilot_eval/*.tmp
 mlruns/
 mlflow.db
 spark-warehouse/
@@ -18,3 +20,4 @@ derby.log
 .DS_Store
 notes/
 *.egg-info/
+docs/policies/*.pdf

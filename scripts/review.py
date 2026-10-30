@@ -415,6 +415,105 @@ def review_p8b() -> None:
     check(phase_done("p8b"), "p8b in tests/PHASES_DONE", "make phase-done P=8b")
 
 
+def _copilot_db() -> tuple[dict, str]:
+    """Counts the copilot can see, read as sigap_copilot (proves the role works and is limited)."""
+    sys.path.insert(0, str(ROOT / "src"))
+    stats, err = {}, ""
+    try:
+        import psycopg
+
+        from sigap.copilot.tools import copilot_dsn
+
+        with psycopg.connect(copilot_dsn(), connect_timeout=5) as conn:
+            stats["apps"] = conn.execute("SELECT count(*) FROM copilot.v_application").fetchone()[0]
+            stats["sources"] = conn.execute("SELECT count(DISTINCT source) FROM copilot.policy_chunks").fetchone()[0]
+            stats["chunks"] = conn.execute("SELECT count(*) FROM copilot.policy_chunks").fetchone()[0]
+            try:
+                conn.execute("SELECT 1 FROM gold.fact_application LIMIT 1")
+                stats["gold_blocked"] = False
+            except psycopg.errors.InsufficientPrivilege:
+                stats["gold_blocked"] = True
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc).splitlines()[0][:160]
+    return stats, err
+
+
+def _eval_runs() -> dict[str, list[dict]]:
+    runs = {}
+    for f in sorted((ROOT / "reports" / "copilot_eval").glob("*.jsonl")):
+        runs[f.stem] = [json.loads(ln) for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return runs
+
+
+def review_p9() -> None:
+    check(
+        tests_pass("p9"),
+        "make check P=9 green (guardrails, chunking, eval, graph with a scripted LLM)",
+        "make check P=9",
+    )
+    stats, err = _copilot_db()
+    check(
+        stats.get("apps", 0) > 0,
+        f"copilot role reads copilot.v_application ({stats.get('apps', 0):,} rows)",
+        err or "make env-secrets, then make copilot-db",
+    )
+    check(stats.get("gold_blocked") is True, "copilot role cannot read gold.* directly", err or "make copilot-db")
+    check(
+        stats.get("sources", 0) >= 2,
+        f"policy index: {stats.get('chunks', 0)} chunks from {stats.get('sources', 0)} documents",
+        "make docs-download && make rag-index",
+    )
+    golden = [json.loads(ln) for ln in read("eval/golden.jsonl").splitlines() if ln.strip()]
+    cats = {c.get("category") for c in golden}
+    check(
+        len(golden) >= 20 and len(cats) >= 5,
+        f"golden set: {len(golden)} cases, {len(cats)} categories",
+        "eval/golden.jsonl",
+    )
+    runs = _eval_runs()
+    versions = {name.rsplit("__", 1)[-1] for name, rows in runs.items() if len(rows) >= len(golden) > 0}
+    check(
+        {"v1", "v2"} <= versions,
+        f"full eval runs for prompt v1 and v2 (found {sorted(versions) or 'none'})",
+        "make copilot-eval PROMPT=v1 && make copilot-eval PROMPT=v2",
+    )
+    check(doc_filled("docs/adr/0003-copilot-read-only-tools.md"), "ADR 0003 written", "docs/adr/0003-...md")
+    check(
+        doc_filled("docs/adr/0004-copilot-prompt-and-eval.md"),
+        "ADR 0004: results pasted and decision written",
+        "paste both eval tables and write the decision",
+    )
+    check(
+        bool(read("src/sigap/copilot/mcp_server.py")),
+        "MCP server (Could: try it from Claude Desktop)",
+        "make mcp",
+        optional=True,
+    )
+    check(phase_done("p9"), "p9 in tests/PHASES_DONE", "make phase-done P=9")
+
+
+def review_p9b() -> None:
+    check(tests_pass("p9b"), "make check P=9b green (summary, paired outcomes, McNemar, verdict)", "make check P=9b")
+    runs = _eval_runs()
+    providers = {name.split("_", 1)[0] for name in runs}
+    check(
+        {"anthropic", "ollama"} <= providers,
+        f"eval runs for an API and a local model (found {sorted(runs) or 'none'})",
+        "make copilot-eval MODEL=ollama:hermes3:8b",
+    )
+    check(
+        bool(read("reports/copilot_eval/compare.md")),
+        "reports/copilot_eval/compare.md written",
+        "make copilot-compare A=... B=...",
+    )
+    check(
+        doc_filled("docs/adr/0008-local-vs-api-llm.md"),
+        "ADR 0008 filled (results, decision, consequences)",
+        "docs/adr/0008-local-vs-api-llm.md",
+    )
+    check(phase_done("p9b"), "p9b in tests/PHASES_DONE", "make phase-done P=9b")
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -426,6 +525,8 @@ REVIEWS = {
     "7": review_p7,
     "8": review_p8,
     "8b": review_p8b,
+    "9": review_p9,
+    "9b": review_p9b,
 }
 
 

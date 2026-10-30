@@ -33,29 +33,50 @@ def _normalize(num: str) -> set[float]:
     return {round(v, 4), round(v / 100, 4)} if num.endswith("%") else {round(v, 4), round(v * 100, 4)}
 
 
-def ungrounded_numbers(answer: str, tool_outputs: list[str], ignore_below: float = 10) -> list[str]:
-    """Phase 9 · TODO(Agatha): numbers in `answer` that do not appear in any tool output.
+def _is_small_whole(num: str, ignore_below: float) -> bool:
+    body = num.rstrip("%")
+    if "." in body or "," in body:
+        return False
+    try:
+        return abs(int(body)) < ignore_below
+    except ValueError:
+        return False
 
-    - Use extract_numbers on the answer and on every tool output.
-    - Two numbers match if their normalized values intersect (use _normalize: "3.2%" matches 0.032 and 3.2).
-    - Ignore small whole numbers (abs value < ignore_below and no decimal point), e.g. "top 3", "month 6".
-    Return the offending strings in the order they appear in the answer (duplicates kept once).
-    Test: tests/test_p9_copilot.py::test_ungrounded_numbers
+
+def ungrounded_numbers(answer: str, tool_outputs: list[str], ignore_below: float = 10) -> list[str]:
+    """Numbers in `answer` that appear in no tool output (or other grounding source).
+
+    Two numbers match when their normalized values intersect, so "3.2%" matches 0.032 and 3.2, and "1,250"
+    matches 1250. Small whole numbers (|x| < ignore_below, no decimal part) such as "top 3" or "bulan 6" are
+    ignored. The offending strings are returned in order of appearance, each once.
     """
-    raise NotImplementedError("TODO(Agatha) phase 9: sigap.copilot.guardrails.ungrounded_numbers")
+    known: set[float] = set()
+    for out in tool_outputs:
+        for num in extract_numbers(out):
+            known |= _normalize(num)
+    missing: list[str] = []
+    for num in extract_numbers(answer):
+        if _is_small_whole(num, ignore_below) or num in missing:
+            continue
+        if not (_normalize(num) & known):
+            missing.append(num)
+    return missing
+
+
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+_NIK = re.compile(r"\b\d{16}\b")
+_PHONE = re.compile(r"(?<![\w+])(?:\+62|62|0)8(?:[\s-]?\d){7,11}\b")
 
 
 def mask_pii(text: str) -> str:
-    """Phase 9 · TODO(Agatha): mask personal data before text leaves the bank.
+    """Mask personal data before text is sent to a model: e-mail -> [EMAIL], NIK -> [NIK], phone -> [PHONE].
 
-    Replace:
-      e-mail addresses                                  -> "[EMAIL]"
-      Indonesian NIK (exactly 16 digits, word bounded)  -> "[NIK]"
-      phone numbers starting +62, 62 or 08 followed by 8-12 digits (spaces/dashes allowed) -> "[PHONE]"
-    Order matters: NIK before phone, or a NIK starting with 62... becomes a phone.
-    Test: tests/test_p9_copilot.py::test_mask_pii
+    NIK (exactly 16 digits) is masked before phone numbers, so a NIK that starts with 62 is not read as a phone.
+    Phones: +62, 62 or 0, then 8 and 8-12 more digits, spaces or dashes allowed between digits.
     """
-    raise NotImplementedError("TODO(Agatha) phase 9: sigap.copilot.guardrails.mask_pii")
+    text = _EMAIL.sub("[EMAIL]", text)
+    text = _NIK.sub("[NIK]", text)
+    return _PHONE.sub("[PHONE]", text)
 
 
 INJECTION_PATTERNS = [
@@ -65,15 +86,17 @@ INJECTION_PATTERNS = [
     r"system prompt",
     r"approve (this|the) application",
     r"setujui (aplikasi|pengajuan) ini",
+    r"lupakan (semua )?(aturan|instruksi)",
+    r"kamu sekarang (adalah )?",
+    r"tampilkan (system )?prompt",
 ]
+_INJECTION = re.compile("|".join(f"(?:{p})" for p in INJECTION_PATTERNS), re.IGNORECASE)
 
 
 def looks_like_injection(text: str) -> bool:
-    """Phase 9 · TODO(Agatha): True if text matches any INJECTION_PATTERNS (case-insensitive).
+    """True if text matches any of INJECTION_PATTERNS (case-insensitive).
 
-    This is a tripwire, not a defence: the real defence is that the copilot is READ-ONLY (it has no tool
-    that approves or declines anything) and that pasted text is passed as data, clearly delimited.
-    Add your own Indonesian patterns after reading real examples (keep the tests green).
-    Test: tests/test_p9_copilot.py::test_injection_tripwire
+    A tripwire, not a defence: the defence is that the copilot is read-only (no tool approves or declines
+    anything) and that pasted text is treated as data. A match adds a warning to the model's instructions.
     """
-    raise NotImplementedError("TODO(Agatha) phase 9: sigap.copilot.guardrails.looks_like_injection")
+    return bool(_INJECTION.search(text))

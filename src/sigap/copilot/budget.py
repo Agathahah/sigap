@@ -5,12 +5,15 @@ A copilot that loops on tools can burn the API budget in minutes. Two controls (
   - a daily budget in USD (this file): the agent stops politely when the day's budget is used up
 
 Prices live in configs/llm.yaml (USD per million tokens). A local model (Ollama/Hermes) has price 0 here:
-its cost is hardware and electricity, which you discuss in ADR 0008, not tokens.
+its cost is hardware and electricity, discussed in ADR 0008, not tokens.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from sigap.config import load_yaml
 
@@ -22,39 +25,57 @@ def price_for(model_spec: str) -> dict:
 
 
 def estimate_cost(usage: dict | None, price: dict) -> float:
-    """Phase 9 · TODO(Agatha): USD cost of one LLM call.
+    """USD cost of one LLM call from LangChain `AIMessage.usage_metadata` and a price in USD per 1M tokens.
 
-    usage: LangChain `AIMessage.usage_metadata`, e.g. {"input_tokens": 1200, "output_tokens": 300, ...};
-           None or missing keys count as 0 tokens.
-    price: {"input_per_mtok": 1.0, "output_per_mtok": 5.0}  (USD per 1,000,000 tokens)
-    cost = input_tokens / 1e6 * input_per_mtok + output_tokens / 1e6 * output_per_mtok
-    Negative token counts -> ValueError.
-    Test: tests/test_p9_agent.py::test_estimate_cost
+    None or missing keys count as 0 tokens; negative counts raise ValueError.
     """
-    raise NotImplementedError("TODO(Agatha) phase 9: sigap.copilot.budget.estimate_cost")
+    usage = usage or {}
+    tin, tout = usage.get("input_tokens", 0) or 0, usage.get("output_tokens", 0) or 0
+    if tin < 0 or tout < 0:
+        raise ValueError(f"negative token count in {usage}")
+    return tin / 1e6 * price["input_per_mtok"] + tout / 1e6 * price["output_per_mtok"]
 
 
 @dataclass
 class CostMeter:
-    """Phase 9 · TODO(Agatha): running total of today's spend.
-
-    - add(cost): add a non-negative cost (ValueError if negative)
-    - remaining: max(0, daily_budget_usd - spent_usd)
-    - exceeded: True when spent_usd > daily_budget_usd (equal is still allowed)
-    In production the spent amount would be read from the request log at startup; here it starts at spent_usd.
-    Test: tests/test_p9_agent.py::test_cost_meter
-    """
+    """Running total of today's spend. Spending exactly the budget is allowed; going over it is not."""
 
     daily_budget_usd: float
     spent_usd: float = 0.0
 
     def add(self, cost: float) -> None:
-        raise NotImplementedError("TODO(Agatha) phase 9: CostMeter.add")
+        if cost < 0:
+            raise ValueError(f"cost must be >= 0, got {cost}")
+        self.spent_usd += cost
 
     @property
     def remaining(self) -> float:
-        raise NotImplementedError("TODO(Agatha) phase 9: CostMeter.remaining")
+        return max(0.0, self.daily_budget_usd - self.spent_usd)
 
     @property
     def exceeded(self) -> bool:
-        raise NotImplementedError("TODO(Agatha) phase 9: CostMeter.exceeded")
+        return self.spent_usd > self.daily_budget_usd + 1e-12
+
+
+def spent_today(ledger: Path, today: dt.date | None = None) -> float:
+    """Today's spend from a small JSON ledger {"YYYY-MM-DD": usd}, so the budget holds across CLI runs."""
+    day = (today or dt.date.today()).isoformat()
+    try:
+        return float(json.loads(ledger.read_text(encoding="utf-8")).get(day, 0.0))
+    except (FileNotFoundError, ValueError):
+        return 0.0
+
+
+def record_spend(ledger: Path, cost: float, today: dt.date | None = None) -> None:
+    """Add `cost` to today's entry in the ledger (keeps the last 31 days)."""
+    if cost <= 0:
+        return
+    day = (today or dt.date.today()).isoformat()
+    try:
+        book = json.loads(ledger.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        book = {}
+    book[day] = round(float(book.get(day, 0.0)) + cost, 6)
+    book = dict(sorted(book.items())[-31:])
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(json.dumps(book, indent=1) + "\n", encoding="utf-8")

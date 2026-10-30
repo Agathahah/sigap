@@ -128,24 +128,30 @@ n8n-import: ## n8n/workflows/*.json -> n8n (e.g. on a new laptop; re-create cred
 	docker compose --profile ops exec n8n n8n import:workflow --separate --input=/backup/workflows/
 
 # ---------- phase 9 · copilot ----------
+POJK_URL := https://ojk.go.id/id/regulasi/Documents/Pages/Penerapan-Strategi-Anti-Fraud-Bagi-Lembaga-Jasa-Keuangan/POJK%2012%20Tahun%202024%20Penerapan%20Strategi%20Anti%20Fraud%20bagi%20Lembaga%20Jasa%20Keuangan.pdf
 llm-setup: ## extra dependencies for the copilot
 	$(PY) -m pip install -r requirements-llm.txt
-docs-download: ## POJK 12/2024 anti-fraud (public) into docs/policies
-	curl -L -o docs/policies/POJK-12-2024-strategi-anti-fraud.pdf "https://ojk.go.id/id/regulasi/Documents/Pages/Penerapan-Strategi-Anti-Fraud-Bagi-Lembaga-Jasa-Keuangan/POJK%2012%20Tahun%202024%20Penerapan%20Strategi%20Anti%20Fraud%20bagi%20Lembaga%20Jasa%20Keuangan.pdf"
-rag-index: ## chunk + embed policy docs into pgvector
+docs-download: ## POJK 12/2024 anti-fraud (public) into docs/policies; if the site rejects it, download it in a browser
+	@curl -sSL -o docs/policies/POJK-12-2024-strategi-anti-fraud.pdf "$(POJK_URL)" || true
+	@if head -c 5 docs/policies/POJK-12-2024-strategi-anti-fraud.pdf 2>/dev/null | grep -q '%PDF-'; then echo "POJK 12/2024 saved"; \
+	else rm -f docs/policies/POJK-12-2024-strategi-anti-fraud.pdf; echo "ojk.go.id did not return the PDF. Open this link in your browser and save the file as docs/policies/POJK-12-2024-strategi-anti-fraud.pdf:"; echo "  $(POJK_URL)"; exit 1; fi
+copilot-db: ## copilot views + read-only role sigap_copilot (password from SIGAP_COPILOT_DB_PASSWORD in .env)
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap} -v ON_ERROR_STOP=1 < sql/warehouse/005_copilot.sql
+	@echo "ALTER ROLE sigap_copilot PASSWORD :'pw';" | docker compose exec -T postgres psql -q -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap} -v ON_ERROR_STOP=1 -v pw="$$SIGAP_COPILOT_DB_PASSWORD" && echo "sigap_copilot password set from .env"
+rag-index: ## chunk + embed policy docs into pgvector (first run downloads the embedding model, ~470 MB)
 	$(PY) -m sigap.copilot.rag
 mcp: ## MCP server (stdio)
 	$(PY) -m sigap.copilot.mcp_server
 copilot: ## ask: make copilot Q="..."
 	$(PY) -m sigap.copilot.agent "$(Q)"
-copilot-eval: ## golden set on MODEL (default SIGAP_LLM_MODEL); anthropic:* costs money, ollama:* is local
-	$(PY) -m sigap.copilot.eval $(if $(MODEL),--model "$(MODEL)",)
+copilot-eval: ## golden set: make copilot-eval [MODEL=...] [PROMPT=v2]; anthropic:* costs money, ollama:* is local
+	$(PY) -m sigap.copilot.eval $(if $(MODEL),--model "$(MODEL)",) $(if $(PROMPT),--prompt "$(PROMPT)",)
 
 # ---------- phase 9b · local open-weight model vs API ----------
 ollama-pull: ## download a local model, e.g. make ollama-pull OLLAMA_MODEL=hermes3:8b
 	ollama pull $(OLLAMA_MODEL)
-copilot-compare: ## compare two eval runs: make copilot-compare A=anthropic:claude-haiku-4-5 B=ollama:hermes3:8b
-	$(PY) -m sigap.copilot.compare "$(A)" "$(B)"
+copilot-compare: ## compare two eval runs: make copilot-compare A=anthropic:claude-haiku-5-5 B=ollama:hermes3:8b [PROMPT=v2]
+	$(PY) -m sigap.copilot.compare "$(A)" "$(B)" $(or $(PROMPT),v1)
 
 clean: ## remove generated data (keeps raw downloads)
 	rm -rf data/landing data/landing_valid data/quarantine data/bronze data/silver data/gold spark-warehouse metastore_db
