@@ -98,3 +98,13 @@ def test_unknown_route_keeps_all_tools_and_router_off_is_unchanged():
     assert s["route"] == "other" and shared["seen_tools"][1] == ["query_kpi", "search_policy", "get_application"]
     shared, s = run([AIMessage("Tidak ada angka.")], "Tolong bantu", router=False)
     assert "route" not in s and shared["i"] == 1
+
+
+def test_resume_keeps_finished_rows_and_drops_a_cut_off_line(tmp_path):
+    from sigap.copilot.eval import load_done
+
+    f = tmp_path / "run.jsonl"
+    assert load_done(f) == []
+    lines = ['{"id": "kpi-01", "passed": true}', '{"id": "pol-01", "passed": false}', '{"id": "case-0']
+    f.write_text("\n".join(lines), encoding="utf-8")
+    assert [r["id"] for r in load_done(f)] == ["kpi-01", "pol-01"]

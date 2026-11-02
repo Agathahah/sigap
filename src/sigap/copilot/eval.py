@@ -63,6 +63,19 @@ def run_file(spec: str, prompt_version: str, eval_set: str = "golden"):  # noqa:
     return OUT_DIR / f"{re.sub(r'[^A-Za-z0-9._-]+', '_', spec)}__{prompt_version}{suffix}.jsonl"
 
 
+def load_done(path) -> list[dict]:  # noqa: ANN001
+    """Rows already written to a run file, so a stopped run can continue (--resume). A cut-off last line is dropped."""
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            break
+    return rows
+
+
 def main() -> None:
     from sigap.copilot.agent import ask, build_copilot
     from sigap.copilot.budget import record_spend
@@ -74,6 +87,12 @@ def main() -> None:
     parser.add_argument("--only", default="", help="comma-separated case ids (debugging)")
     parser.add_argument("--set", default="golden", choices=sorted(SETS), help="golden (24 cases) or heldout (10)")
     parser.add_argument("--router", action="store_true", help="classify first and bind only that category's tools")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        default=os.getenv("SIGAP_EVAL_RESUME") == "1",
+        help="keep the cases already in the run file and only run the rest (or set SIGAP_EVAL_RESUME=1)",
+    )
     args = parser.parse_args()
 
     from sigap.copilot.agent import LEDGER
@@ -86,9 +105,17 @@ def main() -> None:
     version = f"{version}-router" if args.router else version
     out = run_file(spec, version, args.set)
     out.parent.mkdir(parents=True, exist_ok=True)
-    results = []
+    results = load_done(out) if args.resume else []
+    done = {r["id"] for r in results}
+    todo = [c for c in cases if c["id"] not in done]
+    if done:
+        print(f"resume: {len(done)} cases already in {out.name}, {len(todo)} to run")
     with out.open("w", encoding="utf-8") as fh:
-        for case in cases:
+        for row in results:  # rewrite the kept rows first (drops a cut-off last line)
+            fh.write(json.dumps(row) + "\n")
+        fh.flush()
+        for i, case in enumerate(todo, start=1):
+            print(f"  [{i}/{len(todo)}] {case['id']} ...", flush=True)
             state, latency = ask(graph, case["question"])
             record_spend(LEDGER, state.get("cost_usd", 0.0))
             # the question counts as a source: echoing "bulan 5" or an application id is not invented
@@ -115,6 +142,7 @@ def main() -> None:
             }
             results.append(row)
             fh.write(json.dumps(row) + "\n")
+            fh.flush()  # a stopped run (Ctrl+C, a hot laptop) keeps every finished case
             mark = "PASS" if row["passed"] else "fail"
             failed = [k for k in ("tools_ok", "contains_ok", "forbidden_ok", "grounded_ok") if not row[k]]
             reason = row["stopped_reason"] or ""

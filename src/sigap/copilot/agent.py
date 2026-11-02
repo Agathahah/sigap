@@ -140,6 +140,8 @@ def make_llm(spec: str, temperature: float | None = None):  # noqa: ANN201
         model=model,
         temperature=0.0 if temperature is None else temperature,
         num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "8192")),
+        # cap on tokens per reply: stops a reasoning model from thinking for minutes (unset = no cap, as in 9b)
+        num_predict=int(os.environ["OLLAMA_NUM_PREDICT"]) if os.getenv("OLLAMA_NUM_PREDICT") else None,
     )
 
 
