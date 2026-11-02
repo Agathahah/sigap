@@ -20,6 +20,7 @@ ALLOWED_FILES = {"data/README.md"}
 SECRETS = {
     "Anthropic API key": re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
     "Meta access token": re.compile(r"EAA[A-Za-z0-9]{30,}"),
+    "Telegram bot token": re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b"),
     "Gmail app password assignment": re.compile(
         r"(?i)app[_ ]?password\s*[:=]\s*[a-z]{4}\s?[a-z]{4}\s?[a-z]{4}\s?[a-z]{4}"
     ),
@@ -52,7 +53,9 @@ def checks() -> list[tuple[bool, str, str]]:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         for name, pat in SECRETS.items():
-            hits = [m for m in pat.findall(text) if FICTIONAL not in re.sub(r"\D", "", m)]
+            hits = [m.group(0) for m in pat.finditer(text)]
+            if name == "Indonesian phone number":  # test fixtures use obviously fake numbers
+                hits = [h for h in hits if FICTIONAL not in re.sub(r"\D", "", h)]
             found += [f"{name} in {f}"] if hits else []
     out.append(
         (

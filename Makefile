@@ -144,14 +144,20 @@ mcp: ## MCP server (stdio)
 	$(PY) -m sigap.copilot.mcp_server
 copilot: ## ask: make copilot Q="..."
 	$(PY) -m sigap.copilot.agent "$(Q)"
-copilot-eval: ## golden set: make copilot-eval [MODEL=...] [PROMPT=v2]; anthropic:* costs money, ollama:* is local
-	$(PY) -m sigap.copilot.eval $(if $(MODEL),--model "$(MODEL)",) $(if $(PROMPT),--prompt "$(PROMPT)",)
+copilot-eval: ## eval: make copilot-eval [MODEL=...] [PROMPT=v2] [SET=heldout] [ROUTER=1] [ONLY=id,id]; anthropic:* costs money
+	$(PY) -m sigap.copilot.eval $(if $(MODEL),--model "$(MODEL)",) $(if $(PROMPT),--prompt "$(PROMPT)",) $(if $(SET),--set "$(SET)",) $(if $(ROUTER),--router,) $(if $(ONLY),--only "$(ONLY)",)
 
 # ---------- phase 9b · local open-weight model vs API ----------
 ollama-pull: ## download a local model, e.g. make ollama-pull OLLAMA_MODEL=hermes3:8b
 	ollama pull $(OLLAMA_MODEL)
-copilot-compare: ## compare two eval runs: make copilot-compare A=anthropic:claude-haiku-5-5 B=ollama:hermes3:8b [PROMPT=v2]
-	$(PY) -m sigap.copilot.compare "$(A)" "$(B)" $(or $(PROMPT),v1)
+copilot-compare: ## compare two runs: make copilot-compare A=... B=... [PROMPT=v2] [SET=heldout]; A=model@v2-router for a router run
+	$(PY) -m sigap.copilot.compare "$(A)" "$(B)" $(or $(PROMPT),v1) $(or $(SET),golden)
+copilot-table: ## one line per eval run in reports/copilot_eval (model, prompt, set, pass rate, latency, cost)
+	$(PY) -m sigap.copilot.compare --table
+
+# ---------- phase 11 · Telegram ----------
+telegram-bot: ## SIGAP Telegram bot: alerts, review cases with buttons, copilot chat (needs make docker-run; Ctrl+C stops)
+	$(PY) -m sigap.telegram.bot
 
 clean: ## remove generated data (keeps raw downloads)
 	rm -rf data/landing data/landing_valid data/quarantine data/bronze data/silver data/gold spark-warehouse metastore_db

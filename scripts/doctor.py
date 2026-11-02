@@ -177,8 +177,22 @@ def main(max_phase: float, spark: bool) -> int:
         check("copilot packages (make llm-setup)", 9, False, f"make llm-setup ({e.name} missing)")
     check("ollama installed", 9.5, shutil.which("ollama") is not None, "brew install ollama")
 
+    # ---- phase 11
+    check(
+        "SIGAP_TELEGRAM_BOT_TOKEN in .env",
+        11,
+        bool(env.get("SIGAP_TELEGRAM_BOT_TOKEN")),
+        "Telegram -> @BotFather -> /newbot, then put the token in .env",
+    )
+    check(
+        "SIGAP_TELEGRAM_CHAT_IDS in .env",
+        11,
+        bool(env.get("SIGAP_TELEGRAM_CHAT_IDS")),
+        "run make telegram-bot, send /start to your bot, copy the chat id it replies with",
+    )
+
     # ---- report
-    label = {0: "0", 1: "1", 3: "3", 5: "5", 8.5: "8b", 9: "9", 9.5: "9b"}
+    label = {0: "0", 1: "1", 3: "3", 5: "5", 8.5: "8b", 9: "9", 9.5: "9b", 11: "11"}
     missing_now = 0
     print(f"\nSIGAP doctor · tools needed up to phase {label.get(max_phase, max_phase)}\n")
     for status, name, phase, fix in RESULTS:

@@ -20,7 +20,7 @@ flowchart LR
   E --> F[Decision bands<br/>cost under capacity]
   F --> G[FastAPI scoring<br/>decision log]
   G --> H[Monthly replay<br/>drift, late labels<br/>Airflow]
-  H --> I[n8n alerts and review cases<br/>e-mail / WhatsApp<br/>analyst decision form]
+  H --> I[Alerts and review cases<br/>n8n e-mail + Telegram bot<br/>decisions by form or button]
   D --> J[Analyst copilot<br/>LangGraph, read-only tools<br/>pgvector RAG, guardrails]
 ```
 
@@ -35,7 +35,7 @@ flowchart LR
 | Decision policy | Model + bands vs rules on months 6–7: stops 44.6% vs 31.9% of fraud while reviewing 6.05% vs 8.23% of applications; automatic declines capped at 1% (62 genuine applicants per 10,000; 413 without the cap). Scenario saving Rp 216.5 million per 10,000 applications (Rp 43–431 million across the sensitivity range) | [decision policy](docs/04_DECISION_POLICY.md), [business memo](docs/05_BUSINESS_MEMO.md) |
 | Serving | FastAPI in Docker: round-trip p95 12.3 ms over 500 requests on a MacBook Air (target < 100 ms) | [runbook](docs/RUNBOOK.md) |
 | Monitoring | Replay of months 5–7: `credit_risk_score` drifted past PSI 0.25 in months 6–7 while the score's PSI stayed at 0.03–0.08; recall when labels arrived 0.518 / 0.509 / 0.532; the age FPR ratio fell 0.65 → 0.60 → 0.56, still above the limit | [monitoring replay](docs/06_MONITORING_REPLAY.md) |
-| Fraud-ops automation | 12 alerts and the daily review summary delivered by n8n, one analyst decision written back through the validated API. WhatsApp from the Meta test number was accepted by the API but failed delivery (error 130497, cross-border restriction for Indonesian users), so alerts now go through a channel switch with e-mail as default | [ADR 0007](docs/adr/0007-ops-automation-n8n-whatsapp.md) |
+| Fraud-ops automation | 12 alerts and the daily review summary delivered by n8n, one analyst decision written back through the validated API. WhatsApp from the Meta test number was accepted by the API but failed delivery (error 130497, cross-border restriction for Indonesian users), so alerts now go through a channel switch with e-mail as default. A Telegram bot (long polling, no public address) adds a second channel with its own delivery receipts: 12 alerts delivered once, review cases decided by button with a confirmation step (2 decisions recorded), and copilot questions from the phone | [ADR 0007](docs/adr/0007-ops-automation-n8n-whatsapp.md), [ADR 0009](docs/adr/0009-telegram-bot-channel.md) |
 | Copilot | 24-case golden set: prompt v2 passed 24/24 vs 17/24 for v1 (McNemar p = 0.016), p50 4.0 s, USD 0.017 per run. The evaluation also caught a bug in the copilot's own grounding guard, fixed with a regression test | [ADR 0004](docs/adr/0004-copilot-prompt-and-eval.md), [ADR 0003](docs/adr/0003-copilot-read-only-tools.md) |
 | Model choice | Same set and prompt: Claude Haiku 5.5 24/24, local Hermes 3 8B 12/24 (p ≈ 0.0005), p95 latency 6.7 s vs 31.2 s. The guardrails held with the weaker model: it never approved anything or kept an invented number | [ADR 0008](docs/adr/0008-local-vs-api-llm.md), [compare.md](reports/copilot_eval/compare.md) |
 
@@ -60,7 +60,7 @@ from `scripts/make_synthetic.py`, which is never used to report results.
 ```bash
 make setup            # Python 3.12 venv (Java 17 for Spark)
 cp .env.example .env  # then: make env-secrets
-make doctor P=0       # tools ready? (P=3 Spark, P=8b n8n, P=9 copilot, P=9b Ollama)
+make doctor P=0       # tools ready? (P=3 Spark, P=8b n8n, P=9 copilot, P=9b Ollama, P=11 Telegram)
 make check P=1        # acceptance tests of one phase; make test runs all
 make help             # every command, in pipeline order
 ```
@@ -74,7 +74,7 @@ the same shape for trying the code without them.
 | Pipeline, warehouse | PySpark, Postgres 16 star schema, SQL |
 | Model, policy | scikit-learn, XGBoost, SHAP, MLflow, NumPy, pandas |
 | Serving, monitoring | FastAPI, Pydantic, Docker, Airflow, GitHub Actions |
-| Fraud ops | n8n, Gmail SMTP, WhatsApp Cloud API |
+| Fraud ops | n8n, Gmail SMTP, Telegram Bot API, WhatsApp Cloud API |
 | Copilot | LangGraph, MCP, pgvector, sentence-transformers, Claude API, Ollama |
 
 ## Documents

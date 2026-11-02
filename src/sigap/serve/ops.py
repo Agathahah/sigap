@@ -7,10 +7,12 @@ Contract (each line is tested in tests/test_p8b_ops.py):
          Missing/wrong key -> 401. Env not set -> 503 (refuse to run open). This key is NOT the scoring key:
          n8n can read alerts and write decisions, it cannot score applications (least privilege).
 
-  GET  /v1/ops/alerts
-         -> 200 [{"alert_key", "kind", "severity", "message"}] for alerts not yet acknowledged, message from
-            format_alert_message(alert, env SIGAP_RUNBOOK_URL or DEFAULT_RUNBOOK_URL)
-  POST /v1/ops/alerts/{alert_key}/ack      body {"channel": "whatsapp" | "email"}
+  GET  /v1/ops/alerts[?channel=email|whatsapp|telegram]
+         -> 200 [{"alert_key", "kind", "severity", "message"}], message from
+            format_alert_message(alert, env SIGAP_RUNBOOK_URL or DEFAULT_RUNBOOK_URL).
+            Without channel: alerts not acknowledged on the primary channel (n8n). With a channel: alerts not yet
+            delivered on that channel (ops.alert_delivery), so each channel sends an alert once.
+  POST /v1/ops/alerts/{alert_key}/ack      body {"channel": "whatsapp" | "email" | "telegram"}
          -> 200 {"alert_key", "acked": true}; acking twice is fine (200 again); unknown key -> 404
   GET  /v1/ops/cases?status=assigned&limit=20
          -> 200 [case_payload(case), ...]; status must be one of OPEN_STATUSES + CLOSED_STATUSES (else 422);
@@ -47,7 +49,7 @@ class AckIn(BaseModel):
     """Acknowledge an alert after it was delivered."""
 
     model_config = ConfigDict(extra="forbid")
-    channel: Literal["whatsapp", "email"]
+    channel: Literal["whatsapp", "email", "telegram"]
 
 
 class DecisionIn(BaseModel):
@@ -68,12 +70,17 @@ def require_ops_key(x_api_key: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="invalid or missing API key")
 
 
+CHANNELS = ("whatsapp", "email", "telegram")
+
+
 @router.get("/alerts", dependencies=[Depends(require_ops_key)])
-def list_alerts(store: OpsStore = Depends(get_store)) -> list[dict]:
+def list_alerts(channel: str | None = None, store: OpsStore = Depends(get_store)) -> list[dict]:
+    if channel is not None and channel not in CHANNELS:
+        raise HTTPException(status_code=422, detail=f"channel must be one of {CHANNELS}")
     url = os.getenv("SIGAP_RUNBOOK_URL", DEFAULT_RUNBOOK_URL)
     return [
         {"alert_key": a.alert_key, "kind": a.kind, "severity": a.severity, "message": format_alert_message(a, url)}
-        for a in store.list_open_alerts()
+        for a in store.list_open_alerts(channel)
     ]
 
 

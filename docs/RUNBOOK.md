@@ -65,6 +65,19 @@ month is held until the owner confirms.
 decision form; the form posts to `POST /v1/ops/cases/{case_id}/decision`. If n8n is down, alerts stay in
 `ops.alert` (`acked_at` NULL) and cases stay assigned; both are sent when it comes back, nothing is lost.
 
+## Telegram bot
+`make telegram-bot` runs the SIGAP bot (long polling, no public address needed). It needs the scoring API with the
+ops routes (`make docker-run`), `SIGAP_TELEGRAM_BOT_TOKEN` and `SIGAP_TELEGRAM_CHAT_IDS` in `.env`, and the copilot
+setup of phase 9 for questions.
+
+| Symptom | Check | Action |
+|---|---|---|
+| The bot does not answer | is `make telegram-bot` running; does its log show `Unauthorized`? | revoke and recreate the token in @BotFather, update `.env`, restart |
+| "Chat ini belum diizinkan" | the chat id the bot replied with | add it to `SIGAP_TELEGRAM_CHAT_IDS`, restart the bot |
+| Alerts reach e-mail but not Telegram | `SELECT * FROM ops.alert_delivery WHERE channel = 'telegram'` | the bot only sends while it runs; it catches up on start |
+| A button says the case is already decided | `ops.review_decision` for that case | expected: a closed case cannot be decided again (409) |
+| Token leaked (pasted somewhere) | | @BotFather → /revoke immediately, then a new token in `.env` |
+
 ## Scoring API
 - **Start (development):** `make serve` → http://127.0.0.1:8000/docs. **Start (container):** `make docker-build`
   then `make docker-run`; the model folder is mounted read-only, so a new model needs a restart, not a rebuild.

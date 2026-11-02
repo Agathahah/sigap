@@ -16,10 +16,12 @@ import pandas as pd
 
 from sigap.ops.alerts import Alert
 
+MIRROR_CHANNELS = ("telegram",)  # receipts only; ops.alert.acked_at stays the primary (n8n) acknowledgement
+
 
 class OpsStore(Protocol):
     def add_alerts(self, alerts: list[Alert]) -> int: ...
-    def list_open_alerts(self) -> list[Alert]: ...
+    def list_open_alerts(self, channel: str | None = None) -> list[Alert]: ...
     def ack_alert(self, alert_key: str, channel: str) -> bool: ...
     def add_cases(self, cases: pd.DataFrame) -> int: ...
     def list_cases(self, status: str | None = None, limit: int = 20) -> list[dict]: ...
@@ -38,6 +40,7 @@ class InMemoryStore:
     def __init__(self) -> None:
         self.alerts: dict[str, Alert] = {}
         self.acks: dict[str, dict] = {}
+        self.deliveries: dict[tuple[str, str], str] = {}
         self.cases: dict[str, dict] = {}
         self.decisions: list[dict] = []
 
@@ -50,13 +53,18 @@ class InMemoryStore:
                 new += 1
         return new
 
-    def list_open_alerts(self) -> list[Alert]:
-        return [a for k, a in self.alerts.items() if k not in self.acks]
+    def list_open_alerts(self, channel: str | None = None) -> list[Alert]:
+        """No channel: not acknowledged on the primary channel. A channel: not yet delivered on that channel."""
+        if channel is None:
+            return [a for k, a in self.alerts.items() if k not in self.acks]
+        return [a for k, a in self.alerts.items() if (k, channel) not in self.deliveries]
 
     def ack_alert(self, alert_key: str, channel: str) -> bool:
         if alert_key not in self.alerts:
             return False
-        self.acks.setdefault(alert_key, {"channel": channel, "acked_at": _now()})
+        self.deliveries.setdefault((alert_key, channel), _now())
+        if channel not in MIRROR_CHANNELS:
+            self.acks.setdefault(alert_key, {"channel": channel, "acked_at": _now()})
         return True
 
     # cases
@@ -128,11 +136,18 @@ class PostgresStore:
         with self.engine.begin() as conn:
             return sum(len(conn.execute(sql, row).fetchall()) for row in rows)
 
-    def list_open_alerts(self) -> list[Alert]:
-        rows = self._rows(
-            "SELECT alert_key, kind, severity, month, subject, value, threshold FROM ops.alert "
-            "WHERE acked_at IS NULL ORDER BY CASE severity WHEN 'high' THEN 0 ELSE 1 END, kind, subject"
-        )
+    def list_open_alerts(self, channel: str | None = None) -> list[Alert]:
+        """No channel: not acknowledged on the primary channel. A channel: no delivery receipt on that channel."""
+        cols = "a.alert_key, a.kind, a.severity, a.month, a.subject, a.value, a.threshold"
+        order = "ORDER BY CASE a.severity WHEN 'high' THEN 0 ELSE 1 END, a.kind, a.subject"
+        if channel is None:
+            rows = self._rows(f"SELECT {cols} FROM ops.alert a WHERE a.acked_at IS NULL {order}")  # noqa: S608
+        else:
+            rows = self._rows(
+                f"SELECT {cols} FROM ops.alert a WHERE NOT EXISTS (SELECT 1 FROM ops.alert_delivery d "  # noqa: S608
+                f"WHERE d.alert_key = a.alert_key AND d.channel = :ch) {order}",
+                ch=channel,
+            )
         return [Alert(**r) for r in rows]
 
     def ack_alert(self, alert_key: str, channel: str) -> bool:
@@ -143,9 +158,19 @@ class PostgresStore:
             if not exists:
                 return False
             conn.execute(
-                text("UPDATE ops.alert SET acked_at = now(), channel = :ch WHERE alert_key = :k AND acked_at IS NULL"),
+                text(
+                    "INSERT INTO ops.alert_delivery (alert_key, channel) VALUES (:k, :ch) "
+                    "ON CONFLICT (alert_key, channel) DO NOTHING"
+                ),
                 {"k": alert_key, "ch": channel},
             )
+            if channel not in MIRROR_CHANNELS:
+                conn.execute(
+                    text(
+                        "UPDATE ops.alert SET acked_at = now(), channel = :ch WHERE alert_key = :k AND acked_at IS NULL"
+                    ),
+                    {"k": alert_key, "ch": channel},
+                )
         return True
 
     # cases

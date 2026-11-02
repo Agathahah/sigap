@@ -22,6 +22,7 @@ shows it, and the result it produced.
 | API, Docker, CI | MLE, AI eng | `src/sigap/serve/`, `Dockerfile`, `.github/workflows/ci.yml` | p95 12.3 ms, tests of every finished phase in CI |
 | Drift monitoring, late labels, retraining rule | MLE | `src/sigap/monitor/`, [monitoring replay](06_MONITORING_REPLAY.md), [runbook](RUNBOOK.md) | feature drift detected while the score stayed stable |
 | Workflow automation, human in the loop | AI eng, ops | `src/sigap/ops/`, `n8n/workflows/`, [ADR 0007](adr/0007-ops-automation-n8n-whatsapp.md) | alerts sent once, decisions validated and auditable; delivery failure found and handled |
+| Chat-based operations, bots, human in the loop on mobile | AI eng, ops | `src/sigap/telegram/`, `sql/warehouse/006_alert_delivery.sql`, [ADR 0009](adr/0009-telegram-bot-channel.md) | Telegram bot without a public address, per-channel receipts, decisions by button with confirmation |
 | RAG, vector database, embeddings | AI eng | `src/sigap/copilot/rag.py` | POJK 12/2024 + SOP, local multilingual embeddings in pgvector, cited by page |
 | Agents (LangGraph), tool calling, MCP | AI eng | `src/sigap/copilot/agent.py`, `tools.py`, `mcp_server.py`, [ADR 0003](adr/0003-copilot-read-only-tools.md) | explicit graph, 5 read-only tools, read-only database role |
 | LLM evaluation, guardrails, prompt injection, PII | AI eng | `src/sigap/copilot/eval.py`, `guardrails.py`, `eval/golden.jsonl`, [ADR 0004](adr/0004-copilot-prompt-and-eval.md) | 24-case golden set, v2 24/24, eval caught a guardrail bug |

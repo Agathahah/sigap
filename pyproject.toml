@@ -27,6 +27,7 @@ markers = [
   "p8b: phase 8b ops automation (n8n, WhatsApp, human-in-the-loop)",
   "p9: phase 9 copilot",
   "p9b: phase 9b local open-weight model vs API",
+  "p11: phase 11 Telegram channel (alerts, review buttons, copilot)",
   "spark: needs Java 17 + PySpark (slower)",
 ]
 addopts = "-q"

@@ -512,6 +512,20 @@ def review_p9b() -> None:
         "docs/adr/0008-local-vs-api-llm.md",
     )
     check(phase_done("p9b"), "p9b in tests/PHASES_DONE", "make phase-done P=9b")
+    heldout = [name for name in runs if name.endswith("__heldout")]
+    routed = [name for name in runs if "-router" in name]
+    check(
+        len(heldout) >= 2 and bool(routed),
+        f"9b+: held-out runs ({len(heldout)}) and router runs ({len(routed)})",
+        "make copilot-eval MODEL=... PROMPT=v2 SET=heldout [ROUTER=1]",
+        optional=True,
+    )
+    check(
+        "9b+" in read("docs/adr/0008-local-vs-api-llm.md"),
+        "9b+: addendum in ADR 0008",
+        "docs/adr/0008-...md",
+        optional=True,
+    )
 
 
 def review_p10() -> None:
@@ -520,7 +534,7 @@ def review_p10() -> None:
 
     for ok, what, detail in release_check.checks():
         check(ok, f"release: {what}", detail or "scripts/release_check.py")
-    finished = "p1 p2 p3 p4 p5 p6 p7 p8 p8b p9 p9b".split()
+    finished = "p1 p2 p3 p4 p5 p6 p7 p8 p8b p9 p9b".split()  # p11 is checked by its own review
     check(
         all(phase_done(p) for p in finished),
         "phases 1-9b in tests/PHASES_DONE (CI runs their tests)",
@@ -565,6 +579,44 @@ def review_p10() -> None:
     )
 
 
+def review_p11() -> None:
+    check(
+        tests_pass("p11"),
+        "make check P=11 green (receipts, commands, buttons, schedule, token masking)",
+        "make check P=11",
+    )
+    sys.path.insert(0, str(ROOT / "src"))
+    stats, err = {}, ""
+    try:
+        import psycopg
+
+        from sigap import config
+
+        dsn = config.database_url().replace("postgresql+psycopg://", "postgresql://", 1)
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            stats["tg_alerts"] = conn.execute(
+                "SELECT count(*) FROM ops.alert_delivery WHERE channel = 'telegram'"
+            ).fetchone()[0]
+            stats["tg_decisions"] = conn.execute(
+                "SELECT count(*) FROM ops.review_decision WHERE analyst_id LIKE 'tg.%'"
+            ).fetchone()[0]
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc).splitlines()[0][:160]
+    check(
+        stats.get("tg_alerts", 0) > 0,
+        f"alerts delivered on Telegram ({stats.get('tg_alerts', 0)})",
+        err or "make db-sql F=sql/warehouse/006_alert_delivery.sql, then make telegram-bot",
+    )
+    check(
+        stats.get("tg_decisions", 0) > 0,
+        f"case decisions from Telegram buttons ({stats.get('tg_decisions', 0)})",
+        err or "send /kasus to the bot and decide one case",
+    )
+    check(doc_filled("docs/adr/0009-telegram-bot-channel.md"), "ADR 0009 written", "docs/adr/0009-...md")
+    check("## Telegram bot" in read("docs/RUNBOOK.md"), "RUNBOOK: Telegram bot section", "docs/RUNBOOK.md")
+    check(phase_done("p11"), "p11 in tests/PHASES_DONE", "make phase-done P=11")
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -579,6 +631,7 @@ REVIEWS = {
     "9": review_p9,
     "9b": review_p9b,
     "10": review_p10,
+    "11": review_p11,
 }
 
 

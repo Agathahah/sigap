@@ -16,13 +16,13 @@ import sys
 from pathlib import Path
 
 FILE = Path(__file__).resolve().parents[1] / "tests" / "PHASES_DONE"
-VALID = re.compile(r"^p(10|[0-9])b?$")
+VALID = re.compile(r"^p(1[01]|[0-9])b?$")
 
 
 def main(phase: str) -> None:
     marker = phase if phase.startswith("p") else f"p{phase}"
     if not VALID.match(marker):
-        sys.exit(f"unknown phase '{phase}': use 1..10, 8b or 9b")
+        sys.exit(f"unknown phase '{phase}': use 1..11, 8b or 9b")
     lines = FILE.read_text(encoding="utf-8").splitlines()
     comments = [ln for ln in lines if ln.lstrip().startswith("#")]
     current = [m for ln in lines if not ln.lstrip().startswith("#") for m in re.findall(r"p\d+b?", ln)]
