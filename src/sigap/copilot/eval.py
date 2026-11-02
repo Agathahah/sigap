@@ -10,6 +10,7 @@ phase 9b (ADR 0008).
 
 Run:  make copilot-eval                                   (model from SIGAP_LLM_MODEL, prompt v1)
       make copilot-eval MODEL=ollama:hermes3:8b PROMPT=v2
+      make copilot-eval MODEL=ollama:hermes3:8b PROMPT=v2 ROUTER=1 SET=heldout   (phase 9b+)
 Results: reports/copilot_eval/<model>__<prompt>.jsonl  (no answers or tool outputs are written: they may hold data)
 """
 
@@ -24,6 +25,7 @@ from sigap import config
 from sigap.copilot.guardrails import ungrounded_numbers
 
 GOLDEN = config.ROOT / "eval" / "golden.jsonl"
+SETS = {"golden": GOLDEN, "heldout": config.ROOT / "eval" / "heldout.jsonl"}
 OUT_DIR = config.ROOT / "reports" / "copilot_eval"
 
 
@@ -55,8 +57,10 @@ def load_golden(path=GOLDEN) -> list[dict]:  # noqa: ANN001
     return cases
 
 
-def run_file(spec: str, prompt_version: str):  # noqa: ANN201
-    return OUT_DIR / f"{re.sub(r'[^A-Za-z0-9._-]+', '_', spec)}__{prompt_version}.jsonl"
+def run_file(spec: str, prompt_version: str, eval_set: str = "golden"):  # noqa: ANN201
+    """reports/copilot_eval/<model>__<prompt>[__<set>].jsonl; the golden set keeps the original names."""
+    suffix = "" if eval_set == "golden" else f"__{eval_set}"
+    return OUT_DIR / f"{re.sub(r'[^A-Za-z0-9._-]+', '_', spec)}__{prompt_version}{suffix}.jsonl"
 
 
 def main() -> None:
@@ -68,16 +72,19 @@ def main() -> None:
     parser.add_argument("--model", default=os.getenv("SIGAP_LLM_MODEL", "anthropic:claude-haiku-5-5"))
     parser.add_argument("--prompt", default=os.getenv("SIGAP_COPILOT_PROMPT", "v1"))
     parser.add_argument("--only", default="", help="comma-separated case ids (debugging)")
+    parser.add_argument("--set", default="golden", choices=sorted(SETS), help="golden (24 cases) or heldout (10)")
+    parser.add_argument("--router", action="store_true", help="classify first and bind only that category's tools")
     args = parser.parse_args()
 
     from sigap.copilot.agent import LEDGER
 
-    cases = load_golden()
+    cases = load_golden(SETS[args.set])
     if args.only:
         keep = set(args.only.split(","))
         cases = [c for c in cases if c["id"] in keep]
-    graph, meter, spec, version = build_copilot(args.model, args.prompt)
-    out = run_file(spec, version)
+    graph, meter, spec, version = build_copilot(args.model, args.prompt, router=args.router)
+    version = f"{version}-router" if args.router else version
+    out = run_file(spec, version, args.set)
     out.parent.mkdir(parents=True, exist_ok=True)
     results = []
     with out.open("w", encoding="utf-8") as fh:
@@ -116,7 +123,7 @@ def main() -> None:
                 print("daily budget used up: stopping the run early")
                 break
     summary = summarize_run(results)
-    print(f"\n{spec} · prompt {version} · {len(results)} cases -> {out.relative_to(config.ROOT)}\n")
+    print(f"\n{spec} · prompt {version} · {args.set} · {len(results)} cases -> {out.relative_to(config.ROOT)}\n")
     print(summary.to_string(float_format=lambda x: f"{x:.3f}"))
 
 

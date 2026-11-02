@@ -11,7 +11,8 @@ Honesty rules (ADR 0008):
 
 Run:  make copilot-eval MODEL=anthropic:claude-haiku-5-5
       make copilot-eval MODEL=ollama:hermes3:8b
-      make copilot-compare A=anthropic:claude-haiku-5-5 B=ollama:hermes3:8b   -> reports/copilot_eval/compare.md
+      make copilot-compare A=anthropic:claude-haiku-5-5 B=ollama:hermes3:8b PROMPT=v2
+        -> reports/copilot_eval/compare__<A>__vs__<B>__<set>.md
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from __future__ import annotations
 import json
 import math
 import platform
+import re
 import subprocess
 
 import numpy as np
@@ -120,11 +122,19 @@ def _load(path) -> list[dict]:  # noqa: ANN001
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def main(spec_a: str, spec_b: str, prompt_version: str = "v1") -> None:
-    """Write reports/copilot_eval/compare.md from the two eval runs (same prompt version)."""
+def main(spec_a: str, spec_b: str, prompt_version: str = "v1", eval_set: str = "golden") -> None:
+    """Write reports/copilot_eval/compare[__<prompt>__<set>].md from two eval runs of the same prompt and set.
+
+    A spec may carry its own version after "@", e.g. "ollama:hermes3:8b@v2-router", to compare one model with and
+    without the router."""
     from sigap.copilot.eval import OUT_DIR, run_file
 
-    run_a, run_b = _load(run_file(spec_a, prompt_version)), _load(run_file(spec_b, prompt_version))
+    def split(spec: str) -> tuple[str, str]:
+        name, _, version = spec.partition("@")
+        return name, version or prompt_version
+
+    (a_name, a_ver), (b_name, b_ver) = split(spec_a), split(spec_b)
+    run_a, run_b = _load(run_file(a_name, a_ver, eval_set)), _load(run_file(b_name, b_ver, eval_set))
     paired = paired_outcomes(run_a, run_b)
     a_pass = {r["id"]: r for r in run_a}
     disagree = [
@@ -134,7 +144,7 @@ def main(spec_a: str, spec_b: str, prompt_version: str = "v1") -> None:
         if bool(r["passed"]) != bool(a_pass[r["id"]]["passed"])
     ]
     md = [
-        f"# Copilot: {spec_a} vs {spec_b} (prompt {prompt_version})",
+        f"# Copilot: {spec_a} vs {spec_b} (prompt {prompt_version}, {eval_set} set)",
         "",
         f"Hardware for local runs: {hardware()}",
         "",
@@ -158,13 +168,37 @@ def main(spec_a: str, spec_b: str, prompt_version: str = "v1") -> None:
         *(disagree or ["| none | | | |"]),
         "",
     ]
-    out = OUT_DIR / "compare.md"
+    slug = [re.sub(r"[^A-Za-z0-9._-]+", "_", f"{n}@{v}") for n, v in ((a_name, a_ver), (b_name, b_ver))]
+    out = OUT_DIR / f"compare__{slug[0]}__vs__{slug[1]}__{eval_set}.md"  # compare.md (phase 9b) is kept as it was
     out.write_text("\n".join(md), encoding="utf-8")
     print("\n".join(md))
     print(f"-> {out}")
 
 
+def runs_table(out_dir=None) -> str:  # noqa: ANN001
+    """One row per eval run in reports/copilot_eval: model, prompt version, set and its overall summary."""
+    from sigap.copilot.eval import OUT_DIR
+
+    rows = []
+    for f in sorted((out_dir or OUT_DIR).glob("*.jsonl")):
+        parts = f.stem.split("__")
+        model, version, eval_set = parts[0], parts[1], parts[2] if len(parts) > 2 else "golden"
+        s = summarize_run(_load(f)).loc["all"]
+        rows.append(
+            f"| {model} | {version} | {eval_set} | {int(s['n'])} | {s['pass_rate']:.3f} | {s['grounded_rate']:.3f} | "
+            f"{s['tools_ok_rate']:.3f} | {s['p50_latency_s']:.1f} | {s['p95_latency_s']:.1f} | {s['cost_usd']:.4f} |"
+        )
+    head = (
+        "| model | prompt | set | n | pass | grounded | tools_ok | p50 s | p95 s | cost USD |\n"
+        "|---|---|---|---|---|---|---|---|---|---|"
+    )
+    return "\n".join([head, *rows])
+
+
 if __name__ == "__main__":
     import sys
 
-    main(*sys.argv[1:4])
+    if sys.argv[1:2] == ["--table"]:
+        print(runs_table())
+    else:
+        main(*sys.argv[1:5])
