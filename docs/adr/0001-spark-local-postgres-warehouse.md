@@ -1,6 +1,6 @@
 # ADR 0001 · PySpark (local) for bronze/silver, Postgres for the gold warehouse
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-27
 
 ## Context

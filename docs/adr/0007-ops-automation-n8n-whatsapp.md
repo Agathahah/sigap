@@ -1,6 +1,6 @@
 # ADR 0007 · Ops automation with n8n and WhatsApp (human-in-the-loop)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-28
 - n8n version used: 2.44.6 (Docker image `docker.n8n.io/n8nio/n8n:2.44.6`)
 

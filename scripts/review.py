@@ -514,6 +514,57 @@ def review_p9b() -> None:
     check(phase_done("p9b"), "p9b in tests/PHASES_DONE", "make phase-done P=9b")
 
 
+def review_p10() -> None:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import release_check
+
+    for ok, what, detail in release_check.checks():
+        check(ok, f"release: {what}", detail or "scripts/release_check.py")
+    finished = "p1 p2 p3 p4 p5 p6 p7 p8 p8b p9 p9b".split()
+    check(
+        all(phase_done(p) for p in finished),
+        "phases 1-9b in tests/PHASES_DONE (CI runs their tests)",
+        "make phase-done P=<n> for the missing ones",
+    )
+    readme = read("README.md")
+    check(
+        "## Results" in readme and "](docs/" in readme,
+        "README: results table with a source for each row",
+        "README.md",
+    )
+    jd = read("docs/JD_MAP.md")
+    rows = [ln for ln in jd.splitlines() if ln.startswith("| ") and not ln.startswith("| Requirement")]
+    check(
+        len(rows) >= 15 and all(ln.count("|") >= 5 for ln in rows),
+        f"JD map with evidence ({len(rows)} rows)",
+        "docs/JD_MAP.md",
+    )
+    check(
+        doc_filled("docs/INTERVIEW_STORY.md"),
+        "interview story written",
+        "docs/INTERVIEW_STORY.md",
+    )
+    adrs = sorted((ROOT / "docs" / "adr").glob("0[0-9][0-9][1-9]-*.md"))
+    proposed = [a.name[:4] for a in adrs if "Status: proposed" in a.read_text(encoding="utf-8")]
+    check(
+        not proposed,
+        "every ADR reviewed (Status: accepted)",
+        f"still proposed: {', '.join(proposed)}",
+    )
+    check(
+        False,
+        "CI green on GitHub (check the Actions tab)",
+        "github.com/Agathahah/sigap/actions",
+        optional=True,
+    )
+    check(
+        False,
+        "repository public, portfolio card and CV updated",
+        "GitHub Settings -> Change visibility",
+        optional=True,
+    )
+
+
 REVIEWS = {
     "0": review_p0,
     "1": review_p1,
@@ -527,6 +578,7 @@ REVIEWS = {
     "8b": review_p8b,
     "9": review_p9,
     "9b": review_p9b,
+    "10": review_p10,
 }
 
 

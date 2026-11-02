@@ -1,6 +1,6 @@
 # ADR 0008 · Copilot model: API (Claude) vs local open-weight (Hermes via Ollama)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-30
 - Hardware for local runs: MacBook Air (Mac15,12), Apple M3, 16 GB RAM · Ollama 0.40.13 · models and licences:
   `claude-haiku-5-5` (Anthropic API, commercial terms) and `hermes3:8b` (Nous Research Hermes 3, a fine-tune of

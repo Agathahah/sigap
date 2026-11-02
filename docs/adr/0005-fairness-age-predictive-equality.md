@@ -1,6 +1,6 @@
 # ADR 0005 · Fairness: age groups, predictive equality and reweighing
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-28
 
 ## Context

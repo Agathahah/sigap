@@ -1,6 +1,6 @@
 # ADR 0006 · Decision bands chosen by cost under review capacity
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-28
 
 ## Context

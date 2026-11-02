@@ -1,6 +1,6 @@
 # ADR 0002 · Temporal split, label lag and a threshold fixed at 5% FPR
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-28
 
 ## Context

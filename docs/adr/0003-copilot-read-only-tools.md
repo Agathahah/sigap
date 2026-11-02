@@ -1,6 +1,6 @@
 # ADR 0003 · Copilot reads data only through fixed, read-only tools (no free-form SQL)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-29
 
 ## Context

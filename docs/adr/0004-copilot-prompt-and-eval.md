@@ -1,6 +1,6 @@
 # ADR 0004 · Copilot prompt versions are chosen by a golden-set evaluation
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-30
 
 ## Context
