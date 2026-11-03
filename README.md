@@ -37,7 +37,7 @@ flowchart LR
 | Monitoring | Replay of months 5–7: `credit_risk_score` drifted past PSI 0.25 in months 6–7 while the score's PSI stayed at 0.03–0.08; recall when labels arrived 0.518 / 0.509 / 0.532; the age FPR ratio fell 0.65 → 0.60 → 0.56, still above the limit | [monitoring replay](docs/06_MONITORING_REPLAY.md) |
 | Fraud-ops automation | 12 alerts and the daily review summary delivered by n8n, one analyst decision written back through the validated API. WhatsApp from the Meta test number was accepted by the API but failed delivery (error 130497, cross-border restriction for Indonesian users), so alerts now go through a channel switch with e-mail as default. A Telegram bot (long polling, no public address) adds a second channel with its own delivery receipts: 12 alerts delivered once, review cases decided by button with a confirmation step (2 decisions recorded), and copilot questions from the phone | [ADR 0007](docs/adr/0007-ops-automation-n8n-whatsapp.md), [ADR 0009](docs/adr/0009-telegram-bot-channel.md) |
 | Copilot | 24-case golden set: prompt v2 passed 24/24 vs 17/24 for v1 (McNemar p = 0.016), p50 4.0 s, USD 0.017 per run. The evaluation also caught a bug in the copilot's own grounding guard, fixed with a regression test | [ADR 0004](docs/adr/0004-copilot-prompt-and-eval.md), [ADR 0003](docs/adr/0003-copilot-read-only-tools.md) |
-| Model choice | Same set and prompt: Claude Haiku 5.5 24/24, local Hermes 3 8B 12/24 (p ≈ 0.0005), p95 latency 6.7 s vs 31.2 s. The guardrails held with the weaker model: it never approved anything or kept an invented number | [ADR 0008](docs/adr/0008-local-vs-api-llm.md), [compare.md](reports/copilot_eval/compare.md) |
+| Model choice | 24 golden + 10 held-out cases, same prompt: Claude Haiku 5.5 33/34, local Hermes 4 14B 26/34 (p = 0.016) at p50 161 s vs 4.0 s per question, local Hermes 3 8B 16/34. A tool-routing step lifted Hermes 3 to 24/34, not significant (p = 0.077). The guardrails held with every model: none approved anything or kept an invented number | [ADR 0008](docs/adr/0008-local-vs-api-llm.md), [compare.md](reports/copilot_eval/compare.md) |
 
 ## What is not proven yet
 
@@ -45,8 +45,9 @@ flowchart LR
   the recommended next step ([memo](docs/05_BUSINESS_MEMO.md)).
 - Costs per fraud, review and decline are assumptions with public reference points, not bank figures.
 - Fairness is audited for age only, and the age FPR ratio is trending down.
-- The local model comparison covers one small model (Hermes 3 8B); a stronger open-weight model and a tool-routing
-  step for small models are planned and will be reported against a held-out set of new cases.
+- Local models were measured on a laptop only (Apple M3, 16 GB), where Hermes 4 14B needs minutes per answer; its
+  speed on a GPU server is not measured. Each model ran once per set, and one held-out policy case fails for every
+  model (an open retrieval question).
 
 ## Data
 
