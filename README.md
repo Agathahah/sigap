@@ -83,5 +83,4 @@ the same shape for trying the code without them.
 [PRD](docs/00_PRD.md) · [ERD](docs/01_ERD.md) · [data card](docs/02_DATA_CARD.md) ·
 [EDA findings](docs/03_EDA_FINDINGS.md) · [decision policy](docs/04_DECISION_POLICY.md) ·
 [business memo](docs/05_BUSINESS_MEMO.md) · [monitoring replay](docs/06_MONITORING_REPLAY.md) ·
-[model card](docs/MODEL_CARD.md) · [runbook](docs/RUNBOOK.md) · [architecture decisions](docs/adr/) ·
-[job-description map](docs/JD_MAP.md)
+[model card](docs/MODEL_CARD.md) · [runbook](docs/RUNBOOK.md) · [architecture decisions](docs/adr/)

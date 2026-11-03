@@ -200,12 +200,12 @@ def main(max_phase: float, spark: bool) -> int:
             status = "later" if status != "OK" else "OK"
         if status == "MISSING":
             missing_now += 1
-        print(f"  {status:<8} [fase {label.get(phase, phase):>2}] {name}")
+        print(f"  {status:<8} [phase {label.get(phase, phase):>2}] {name}")
         if fix and status == "MISSING":
             print(f"           -> {fix}")
-    summary = "Semua alat untuk fase ini siap." if not missing_now else f"{missing_now} hal perlu dibereskan dulu."
+    summary = "All tools for this phase are ready." if not missing_now else f"{missing_now} item(s) to fix first."
     print("\n" + summary)
-    print("Ingat: doctor hanya mengecek ALAT. Kode fase dicek dengan `make check P=n`.\n")
+    print("doctor checks tools only; code is tested with `make check P=n`.\n")
     return 1 if missing_now else 0
 
 

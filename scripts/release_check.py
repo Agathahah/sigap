@@ -1,4 +1,4 @@
-"""Checks before the repository goes public: `python scripts/release_check.py` (also part of `make review P=10`).
+"""Checks before the repository goes public: `python scripts/release_check.py`.
 
 Looks only at what git tracks and at the commit history, so local data, models and .env are never read.
 Prints one line per check and exits 1 when something must be fixed first.

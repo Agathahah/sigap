@@ -31,8 +31,6 @@ env-secrets: ## replace every change-me value in .env with a random secret (and 
 	@$(PY) scripts/env_secrets.py
 doctor: ## check the TOOLS a phase needs (not your code): make doctor P=3 [SPARK=1]
 	@P=$(if $(filter command line,$(origin P)),$(P),0) SPARK=$(SPARK) $(PY) scripts/doctor.py
-review: ## definition of done for phase P (tests, data, documents): make review P=2
-	@$(PY) scripts/review.py $(P)
 phase-done: ## after make check P=n is green: add pn to tests/PHASES_DONE so CI protects it
 	@$(PY) scripts/phase_done.py $(P)
 check: ## acceptance tests of one phase, e.g. make check P=1
@@ -63,8 +61,8 @@ eda-load: ## training months 0-4 + their labels -> Postgres table eda.applicatio
 	$(PY) -m sigap.quality.eda load
 eda-sql: ## run sql/analysis/q01-q07 on eda.applications (Q=q03 for one), print and save to reports/eda/
 	$(PY) -m sigap.quality.eda run $(Q)
-eda: ## JupyterLab for notebooks/01_eda.ipynb
-	.venv/bin/jupyter lab notebooks/
+eda: ## JupyterLab for exploration notebooks (folder notebooks/, outputs never committed)
+	mkdir -p notebooks && .venv/bin/jupyter lab notebooks/
 
 # ---------- phase 3 · Spark pipeline + warehouse ----------
 bronze: ## landing_valid -> parquet (Spark)
