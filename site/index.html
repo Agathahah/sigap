@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIGAP monitoring</title>
+<meta name="description" content="Monthly replay of the SIGAP fraud-decision model: review load, drift,
+late-label performance and fairness.">
+<style>
+:root{--bg:#f5f7f6;--panel:#fff;--ink:#14201b;--muted:#56645e;--line:#d8dfdc;--soft:#e9eeec;
+--accent:#0d5d56;--approve:#2c7a4c;--review:#a86b12;--decline:#a83c38;--score:#0d5d56;--feature:#7a8f88}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1412;--panel:#141c19;--ink:#e3eae7;--muted:#98a7a1;--line:#28332f;
+--soft:#1b2420;--accent:#62c4b8;--approve:#63c08a;--review:#e2a64c;--decline:#e57c74;--score:#62c4b8;--feature:#8fa39c;
+color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+padding:32px max(16px,env(safe-area-inset-right,0px)) 64px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:36px}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.15;margin:0}
+h2{font-size:1.3rem;margin:0}
+p{margin:0}
+a{color:var(--accent)}
+.eyebrow{font:600 .75rem/1 ui-monospace,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;
+color:var(--muted)}
+.lede{color:var(--muted);max-width:72ch}
+header,section{display:grid;gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:4px}
+.tile .v{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .k{font-size:.85rem;color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:12px;
+min-width:0}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+svg{width:100%;height:auto;display:block}
+.grid{stroke:var(--line);stroke-width:1}
+.tick{fill:var(--muted);font-size:11px}
+.val{fill:var(--ink);font-size:11px;font-weight:600}
+.bar{fill:var(--accent)}
+.bar.over{fill:var(--review)}
+.bar.score{fill:var(--score)}
+.bar.feature{fill:var(--feature)}
+.limit{stroke:var(--decline);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
+.limit.soft{stroke:var(--review)}
+.legend i.sw{width:14px;height:10px}
+.sw.bar{background:var(--accent)}
+.sw.over{background:var(--review)}
+.sw.score{background:var(--score)}
+.sw.feature{background:var(--feature)}
+.legend i.sw.line{background:var(--accent);height:3px;vertical-align:3px}
+.legend i.sw.limit{height:0;border-radius:0;border-top:2px dashed var(--decline);vertical-align:3px}
+.legend i.sw.limit.soft{border-top-color:var(--review)}
+.line{fill:none;stroke:var(--accent);stroke-width:2.5}
+.dot{fill:var(--panel);stroke:var(--accent);stroke-width:2.5}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--soft)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{font:600 .72rem/1 ui-monospace,Menlo,monospace;padding:4px 7px;border-radius:5px;white-space:nowrap}
+.pill.stable,.pill.ok{background:color-mix(in srgb,var(--approve) 16%,transparent);color:var(--approve)}
+.pill.watch,.pill.near{background:color-mix(in srgb,var(--review) 18%,transparent);color:var(--review)}
+.pill.alert,.pill.fail{background:color-mix(in srgb,var(--decline) 15%,transparent);color:var(--decline)}
+.psibar{display:inline-block;height:8px;border-radius:4px;background:var(--feature);vertical-align:middle;margin-right:8px}
+code{font:.88em ui-monospace,Menlo,monospace;background:var(--soft);padding:.1em .35em;border-radius:4px}
+.small{font-size:.86rem;color:var(--muted)}
+.h3{font-size:1rem}
+ul{margin:0;padding-left:1.2em;display:grid;gap:4px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <span class="eyebrow">SIGAP · monitoring replay · months 5–7</span>
+  <h1>SIGAP monitoring</h1>
+  <p class="lede">How the account-opening fraud model behaved when months 5–7 were replayed as if live:
+  review load against the team's capacity, drift against the training months, and recall and fairness once the
+  fraud labels arrived two months later. Offline replay on the BAF Base dataset for a fictional bank, not
+  live traffic. Model <code>base-20261028-0433-b4e83b</code>, snapshot of 2026-11-03.
+  Code and method: <a href="https://github.com/Agathahah/sigap">github.com/Agathahah/sigap</a>.</p>
+  <div class="tiles"><div class="tile"><span class="v">324,334</span><span class="k">applications replayed (months 5–7)</span></div><div class="tile"><span class="v">319/day</span><span class="k">peak review load, month 6; capacity 300</span></div><div class="tile"><span class="v">0.293</span><span class="k">largest feature PSI, month 7 (alert)</span></div><div class="tile"><span class="v">0.56</span><span class="k">age FPR ratio, month 7; release limit 0.50</span></div></div>
+</header>
+
+<section>
+  <h2>Decisions and review load</h2>
+  <p class="small">Reviews per day = review rate × 5,000 applications a day. A day up to 10% over
+  capacity is absorbed with overtime; above that an alert goes to the operations lead.</p>
+  <div class="card"><div class="legend"><span><i class="sw bar"></i>within capacity</span><span><i class="sw over"></i>over capacity</span><span><i class="sw limit"></i>capacity 300/day</span><span><i class="sw limit soft"></i>alert above 330/day</span></div><svg viewBox="0 0 560 220" role="img" aria-label="Reviews per day by month against the review capacity" preserveAspectRatio="xMidYMid meet"><line class="grid" x1="44" x2="548" y1="186.0" y2="186.0"/><text class="tick" x="38" y="190.0" text-anchor="end">0</text><line class="grid" x1="44" x2="548" y1="142.8" y2="142.8"/><text class="tick" x="38" y="146.8" text-anchor="end">100</text><line class="grid" x1="44" x2="548" y1="99.6" y2="99.6"/><text class="tick" x="38" y="103.6" text-anchor="end">200</text><line class="grid" x1="44" x2="548" y1="56.4" y2="56.4"/><text class="tick" x="38" y="60.4" text-anchor="end">300</text><rect class="bar" x="96.0" y="61.8" width="64.0" height="124.2"/><text class="val" x="128.0" y="55.8" text-anchor="middle">287</text><text class="tick" x="128.0" y="208" text-anchor="middle">month 5</text><rect class="bar over" x="264.0" y="48.0" width="64.0" height="138.0"/><text class="val" x="296.0" y="42.0" text-anchor="middle">319</text><text class="tick" x="296.0" y="208" text-anchor="middle">month 6</text><rect class="bar" x="432.0" y="63.6" width="64.0" height="122.4"/><text class="val" x="464.0" y="57.6" text-anchor="middle">283</text><text class="tick" x="464.0" y="208" text-anchor="middle">month 7</text><line class="limit" x1="44" x2="548" y1="56.4" y2="56.4"/><line class="limit soft" x1="44" x2="548" y1="43.4" y2="43.4"/></svg><div class="tbl"><table><thead><tr><th>Month</th><th class="n">Applications</th><th class="n">Approve</th><th class="n">Review</th><th class="n">Decline</th><th class="n">Reviews/day</th><th>Queue</th></tr></thead><tbody><tr><td>5</td><td class="n">119,323</td><td class="n">93.50%</td><td class="n">5.75%</td><td class="n">0.75%</td><td class="n">287</td><td><span class="pill ok">within capacity</span></td></tr><tr><td>6</td><td class="n">108,168</td><td class="n">92.70%</td><td class="n">6.39%</td><td class="n">0.92%</td><td class="n">319</td><td><span class="pill near">over capacity</span></td></tr><tr><td>7</td><td class="n">96,843</td><td class="n">93.51%</td><td class="n">5.66%</td><td class="n">0.83%</td><td class="n">283</td><td><span class="pill ok">within capacity</span></td></tr></tbody></table></div></div>
+</section>
+
+<section>
+  <h2>Drift</h2>
+  <p class="small">Population Stability Index of the model score and of the 10 most important features, each month
+  against the training months. Below 0.10 stable, 0.10–0.25 watch, from 0.25 alert. One
+  drifting feature opens an investigation, not a retraining ticket, while the score stays stable.</p>
+  <div class="card"><div class="legend"><span><i class="sw score"></i>model score</span><span><i class="sw feature"></i>largest single feature</span><span><i class="sw limit"></i>alert 0.25</span><span><i class="sw limit soft"></i>watch 0.10</span></div><svg viewBox="0 0 560 220" role="img" aria-label="Score PSI and largest feature PSI by month" preserveAspectRatio="xMidYMid meet"><line class="grid" x1="44" x2="548" y1="186.0" y2="186.0"/><text class="tick" x="38" y="190.0" text-anchor="end">0.0</text><line class="grid" x1="44" x2="548" y1="141.2" y2="141.2"/><text class="tick" x="38" y="145.2" text-anchor="end">0.1</text><line class="grid" x1="44" x2="548" y1="96.4" y2="96.4"/><text class="tick" x="38" y="100.4" text-anchor="end">0.2</text><line class="grid" x1="44" x2="548" y1="51.6" y2="51.6"/><text class="tick" x="38" y="55.6" text-anchor="end">0.3</text><rect class="bar score" x="91.0" y="171.2" width="34.0" height="14.8"/><text class="val" x="108.0" y="165.2" text-anchor="middle">0.03</text><rect class="bar feature" x="131.0" y="110.7" width="34.0" height="75.3"/><text class="val" x="148.0" y="104.7" text-anchor="middle">0.17</text><text class="tick" x="128.0" y="208" text-anchor="middle">month 5</text><rect class="bar score" x="259.0" y="171.1" width="34.0" height="14.9"/><text class="val" x="276.0" y="165.1" text-anchor="middle">0.03</text><rect class="bar feature" x="299.0" y="72.6" width="34.0" height="113.4"/><text class="val" x="316.0" y="66.6" text-anchor="middle">0.25</text><text class="tick" x="296.0" y="208" text-anchor="middle">month 6</text><rect class="bar score" x="427.0" y="148.6" width="34.0" height="37.4"/><text class="val" x="444.0" y="142.6" text-anchor="middle">0.08</text><rect class="bar feature" x="467.0" y="54.8" width="34.0" height="131.2"/><text class="val" x="484.0" y="48.8" text-anchor="middle">0.29</text><text class="tick" x="464.0" y="208" text-anchor="middle">month 7</text><line class="limit" x1="44" x2="548" y1="74.0" y2="74.0"/><line class="limit soft" x1="44" x2="548" y1="141.2" y2="141.2"/></svg></div>
+  <div class="card"><h2 class="h3">Most-shifted features each month (top 5)</h2><div class="tbl"><table><thead><tr><th>Month</th><th>Feature</th><th class="n">PSI vs training</th><th>Status</th></tr></thead><tbody><tr><td>5</td><td><code>name_email_similarity</code></td><td class="n"><span class="psibar" style="width:69px"></span>0.168</td><td><span class="pill watch">watch</span></td></tr><tr><td>5</td><td><code>credit_risk_score</code></td><td class="n"><span class="psibar" style="width:63px"></span>0.153</td><td><span class="pill watch">watch</span></td></tr><tr><td>5</td><td><code>prev_address_months_count</code></td><td class="n"><span class="psibar" style="width:40px"></span>0.097</td><td><span class="pill stable">stable</span></td></tr><tr><td>5</td><td><code>current_address_months_count</code></td><td class="n"><span class="psibar" style="width:38px"></span>0.092</td><td><span class="pill stable">stable</span></td></tr><tr><td>5</td><td><code>phone_home_valid</code></td><td class="n"><span class="psibar" style="width:24px"></span>0.058</td><td><span class="pill stable">stable</span></td></tr><tr><td>6</td><td><code>credit_risk_score</code></td><td class="n"><span class="psibar" style="width:104px"></span>0.253</td><td><span class="pill alert">alert</span></td></tr><tr><td>6</td><td><code>name_email_similarity</code></td><td class="n"><span class="psibar" style="width:56px"></span>0.137</td><td><span class="pill watch">watch</span></td></tr><tr><td>6</td><td><code>prev_address_months_count</code></td><td class="n"><span class="psibar" style="width:55px"></span>0.134</td><td><span class="pill watch">watch</span></td></tr><tr><td>6</td><td><code>current_address_months_count</code></td><td class="n"><span class="psibar" style="width:12px"></span>0.030</td><td><span class="pill stable">stable</span></td></tr><tr><td>6</td><td><code>email_is_free</code></td><td class="n"><span class="psibar" style="width:9px"></span>0.023</td><td><span class="pill stable">stable</span></td></tr><tr><td>7</td><td><code>credit_risk_score</code></td><td class="n"><span class="psibar" style="width:120px"></span>0.293</td><td><span class="pill alert">alert</span></td></tr><tr><td>7</td><td><code>prev_address_months_count</code></td><td class="n"><span class="psibar" style="width:50px"></span>0.122</td><td><span class="pill watch">watch</span></td></tr><tr><td>7</td><td><code>current_address_months_count</code></td><td class="n"><span class="psibar" style="width:31px"></span>0.076</td><td><span class="pill stable">stable</span></td></tr><tr><td>7</td><td><code>phone_home_valid</code></td><td class="n"><span class="psibar" style="width:16px"></span>0.038</td><td><span class="pill stable">stable</span></td></tr><tr><td>7</td><td><code>name_email_similarity</code></td><td class="n"><span class="psibar" style="width:13px"></span>0.032</td><td><span class="pill stable">stable</span></td></tr></tbody></table></div></div>
+</section>
+
+<section>
+  <h2>Performance when the labels arrived</h2>
+  <p class="small">Fraud is confirmed about two months after the application, so each month's recall is only known
+  two months later. Release limits: recall at least 0.40 at the 5% FPR threshold, age FPR ratio (applicants
+  aged 50+ vs younger) at least 0.50.</p>
+  <div class="charts">
+    <div class="card"><h2 class="h3">Recall at the operating threshold</h2><div class="legend"><span><i class="sw line"></i>Recall by month</span><span><i class="sw limit"></i>release limit 0.40</span></div><svg viewBox="0 0 380 220" role="img" aria-label="Recall by month" preserveAspectRatio="xMidYMid meet"><line class="grid" x1="44" x2="368" y1="186.0" y2="186.0"/><text class="tick" x="38" y="190.0" text-anchor="end">0.00</text><line class="grid" x1="44" x2="368" y1="145.0" y2="145.0"/><text class="tick" x="38" y="149.0" text-anchor="end">0.25</text><line class="grid" x1="44" x2="368" y1="104.0" y2="104.0"/><text class="tick" x="38" y="108.0" text-anchor="end">0.50</text><line class="grid" x1="44" x2="368" y1="63.0" y2="63.0"/><text class="tick" x="38" y="67.0" text-anchor="end">0.75</text><line class="grid" x1="44" x2="368" y1="22.0" y2="22.0"/><text class="tick" x="38" y="26.0" text-anchor="end">1.00</text><line class="limit" x1="44" x2="368" y1="120.4" y2="120.4"/><path class="line" d="M98.0,101.0 L206.0,102.5 L314.0,98.7"/><circle class="dot" cx="98.0" cy="101.0" r="4.5"/><text class="val" x="98.0" y="91.0" text-anchor="middle">0.518</text><text class="tick" x="98.0" y="208" text-anchor="middle">month 5</text><circle class="dot" cx="206.0" cy="102.5" r="4.5"/><text class="val" x="206.0" y="92.5" text-anchor="middle">0.509</text><text class="tick" x="206.0" y="208" text-anchor="middle">month 6</text><circle class="dot" cx="314.0" cy="98.7" r="4.5"/><text class="val" x="314.0" y="88.7" text-anchor="middle">0.532</text><text class="tick" x="314.0" y="208" text-anchor="middle">month 7</text></svg></div>
+    <div class="card"><h2 class="h3">Age FPR ratio</h2><div class="legend"><span><i class="sw line"></i>Age FPR ratio</span><span><i class="sw limit"></i>limit 0.50</span></div><svg viewBox="0 0 380 220" role="img" aria-label="Age FPR ratio" preserveAspectRatio="xMidYMid meet"><line class="grid" x1="44" x2="368" y1="186.0" y2="186.0"/><text class="tick" x="38" y="190.0" text-anchor="end">0.00</text><line class="grid" x1="44" x2="368" y1="145.0" y2="145.0"/><text class="tick" x="38" y="149.0" text-anchor="end">0.25</text><line class="grid" x1="44" x2="368" y1="104.0" y2="104.0"/><text class="tick" x="38" y="108.0" text-anchor="end">0.50</text><line class="grid" x1="44" x2="368" y1="63.0" y2="63.0"/><text class="tick" x="38" y="67.0" text-anchor="end">0.75</text><line class="grid" x1="44" x2="368" y1="22.0" y2="22.0"/><text class="tick" x="38" y="26.0" text-anchor="end">1.00</text><line class="limit" x1="44" x2="368" y1="104.0" y2="104.0"/><path class="line" d="M98.0,79.3 L206.0,87.2 L314.0,93.8"/><circle class="dot" cx="98.0" cy="79.3" r="4.5"/><text class="val" x="98.0" y="69.3" text-anchor="middle">0.651</text><text class="tick" x="98.0" y="208" text-anchor="middle">month 5</text><circle class="dot" cx="206.0" cy="87.2" r="4.5"/><text class="val" x="206.0" y="77.2" text-anchor="middle">0.603</text><text class="tick" x="206.0" y="208" text-anchor="middle">month 6</text><circle class="dot" cx="314.0" cy="93.8" r="4.5"/><text class="val" x="314.0" y="83.8" text-anchor="middle">0.562</text><text class="tick" x="314.0" y="208" text-anchor="middle">month 7</text></svg></div>
+  </div>
+  <div class="card"><div class="tbl"><table><thead><tr><th>Month</th><th>Labels complete in</th><th class="n">Fraud rate</th><th class="n">Recall</th><th class="n">FPR</th><th class="n">Age FPR ratio</th><th>Fairness</th></tr></thead><tbody><tr><td>5</td><td>month 7</td><td class="n">1.18%</td><td class="n">0.518</td><td class="n">0.050</td><td class="n">0.65</td><td><span class="pill ok">ok</span></td></tr><tr><td>6</td><td>month 8</td><td class="n">1.34%</td><td class="n">0.509</td><td class="n">0.056</td><td class="n">0.60</td><td><span class="pill ok">ok</span></td></tr><tr><td>7</td><td>month 9</td><td class="n">1.47%</td><td class="n">0.532</td><td class="n">0.048</td><td class="n">0.56</td><td><span class="pill near">near limit</span></td></tr></tbody></table></div></div>
+</section>
+
+<section>
+  <h2>Decision policy, months 6-7</h2>
+  <p class="small">Rules against the model with approve/review/decline bands chosen by expected cost under review
+  capacity, on 205,011 applications. Costs are scenarios from written assumptions
+  (<code>configs/business.yaml</code>), not bank figures. Automatic declines are capped at 1%.</p>
+  <div class="card"><div class="tbl"><table><thead><tr><th>Policy</th><th class="n">Fraud stopped</th><th class="n">Review</th><th class="n">Auto-decline</th><th class="n">Genuine declined / 10k</th><th class="n">Cost / 10k (scenario)</th><th class="n">Analysts</th></tr></thead><tbody><tr><td>Rules (champion)</td><td class="n">31.9%</td><td class="n">8.23%</td><td class="n">0.00%</td><td class="n">0</td><td class="n">Rp 1,297.9 m</td><td class="n">14</td></tr><tr><td>Model + bands, decline cap 1% (chosen)</td><td class="n">44.6%</td><td class="n">6.05%</td><td class="n">0.87%</td><td class="n">62</td><td class="n">Rp 1,081.5 m</td><td class="n">11</td></tr><tr><td>Model + bands, no decline cap</td><td class="n">60.8%</td><td class="n">6.24%</td><td class="n">4.80%</td><td class="n">413</td><td class="n">Rp 964.6 m</td><td class="n">11</td></tr></tbody></table></div></div>
+</section>
+
+<section>
+  <h2>Sources</h2>
+  <ul class="small">
+    <li>Snapshot <a href="data/monitoring.json"><code>data/monitoring.json</code></a>, exported by
+    <code>make site-data</code> from the views <code>ops.v_monthly_kpis</code> and <code>ops.v_feature_drift</code>
+    and from <code>reports/policy/champion_challenger_*.csv</code>; this page is rebuilt from it by
+    <code>make site</code>.</li>
+    <li>Method: <a href="https://github.com/Agathahah/sigap/blob/main/docs/06_MONITORING_REPLAY.md">monitoring replay</a>,
+    <a href="https://github.com/Agathahah/sigap/blob/main/docs/RUNBOOK.md">runbook</a> (alert and retraining rules),
+    <a href="https://github.com/Agathahah/sigap/blob/main/docs/adr/0005-fairness-age-predictive-equality.md">ADR 0005</a> (fairness limit),
+    <a href="https://github.com/Agathahah/sigap/blob/main/docs/04_DECISION_POLICY.md">decision policy</a>.</li>
+    <li>Data: Bank Account Fraud suite, Jesus et al. (2022), NeurIPS Datasets and Benchmarks, CC BY-NC-SA 4.0.
+    Only monthly aggregates are published here.</li>
+  </ul>
+</section>
+</main>
+</body>
+</html>

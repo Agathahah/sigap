@@ -108,8 +108,13 @@ replay: ## months 5-7 as if live: score, drift, late labels, retraining rule (M=
 	$(PY) -m sigap.monitor.replay $(M)
 monitor-views: ## dashboard views over ops.monitoring_monthly (run after make replay)
 	docker compose exec -T postgres psql -U $${POSTGRES_USER:-sigap} -d $${POSTGRES_DB:-sigap} -v ON_ERROR_STOP=1 < sql/warehouse/004_monitoring_views.sql
-dashboard: ## Metabase on http://localhost:3000 (connect it to Postgres)
+dashboard: ## Metabase on http://localhost:3000 (connect as sigap_copilot, see sql/dashboard/README.md)
 	docker compose --profile dashboard up -d
+.PHONY: site site-data
+site-data: ## monitoring snapshot -> site/data/monitoring.json (after make replay and make monitor-views)
+	$(PY) -m sigap.monitor.site export
+site: ## build site/index.html from the snapshot (published by .github/workflows/pages.yml)
+	$(PY) -m sigap.monitor.site build
 
 # ---------- phase 8b · ops automation (n8n + WhatsApp) ----------
 ops-demo: ## ops API with in-memory demo data on :8001 (build n8n workflows before the model exists)

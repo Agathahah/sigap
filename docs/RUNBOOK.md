@@ -9,7 +9,7 @@ repeated month is simply re-run.
 - **Run in Airflow:** `airflow dags trigger sigap_monthly --conf '{"month": 6}'`; logs per task in the Airflow UI
   (http://localhost:8080) under the DAG run. Retries: 2, five minutes apart.
 - **Outputs:** decisions in `ops.decision_log`, monthly metrics in `ops.monitoring_monthly`, a summary in
-  `reports/monitor/replay_<variant>.csv`, dashboard views from `make monitor-views`.
+  `reports/monitor/replay_<variant>.csv`, dashboard views from `make monitor-views`, the public monitoring page from `make site-data && make site`.
 
 ## Retraining rule
 Written on 28 Oct 2026, before the first replay. A retraining ticket is opened when any of these holds:
@@ -45,7 +45,7 @@ Error 130497 means the business number's country may not message the recipient's
 
 | Alert kind | Goes to | Expected first action | Silence rule |
 |---|---|---|---|
-| drift | data science on duty | check which feature moved (`ops.v_feature_drift`); compare with the quarantine report | one message per `alert_key`; watch-level PSI stays on the dashboard |
+| drift | data science on duty | check which feature moved (`ops.v_feature_drift`); compare with the quarantine report | one message per `alert_key`; watch-level PSI stays on the monitoring page and the Metabase dashboard |
 | queue_over_capacity | fraud operations lead | move analysts or approve overtime; if it lasts, tighten the review band (decision policy) | only above capacity + 10%; one message per day |
 | data_incident | source-system owner | hold the month; do not retrain or trust drift on it | one message per month |
 
@@ -97,3 +97,12 @@ If the API is down, the model fails its monthly checks, or a retraining ticket i
 switches to the rules-only policy (`configs/rules.yaml`, the champion): any rule hit goes to review, everything
 else is approved, nothing is declined automatically. The rules need about 14 analysts at today's volume (decision
 policy), so the review queue is the first thing to watch during a fallback.
+
+## Monitoring page and dashboard
+After each monthly replay:
+
+1. `make replay && make monitor-views` refresh `ops.monitoring_monthly` and the views.
+2. `make site-data` writes `site/data/monitoring.json` (monthly aggregates only); `make site` rebuilds
+   `site/index.html`. `make check P=8` fails if the committed page and snapshot disagree.
+3. Commit `site/`; `.github/workflows/pages.yml` publishes it to https://agathahah.github.io/sigap/.
+4. Optional: `make dashboard` for the Metabase dashboard; the questions are in `sql/dashboard/`.

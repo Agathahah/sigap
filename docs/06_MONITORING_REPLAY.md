@@ -31,3 +31,5 @@ views in `sql/warehouse/004_monitoring_views.sql`.
 - **Capacity:** month 6 needed about 319 reviews a day, 6.5% over capacity. Phase 8b turns this into a
   `queue_over_capacity` alert when the excess passes 10%.
 - **No retraining was triggered** by the rule in the [runbook](RUNBOOK.md).
+
+The same months as charts, rebuilt from `site/data/monitoring.json`: [monitoring page](https://agathahah.github.io/sigap/).
