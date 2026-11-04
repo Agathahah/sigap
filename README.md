@@ -39,6 +39,10 @@ flowchart LR
 | Copilot | 24-case golden set: prompt v2 passed 24/24 vs 17/24 for v1 (McNemar p = 0.016), p50 4.0 s, USD 0.017 per run. The evaluation also caught a bug in the copilot's own grounding guard, fixed with a regression test | [ADR 0004](docs/adr/0004-copilot-prompt-and-eval.md), [ADR 0003](docs/adr/0003-copilot-read-only-tools.md) |
 | Model choice | 24 golden + 10 held-out cases, same prompt: Claude Haiku 5.5 33/34, local Hermes 4 14B 26/34 (p = 0.016) at p50 161 s vs 4.0 s per question, local Hermes 3 8B 16/34. A tool-routing step lifted Hermes 3 to 24/34, not significant (p = 0.077). The guardrails held with every model: none approved anything or kept an invented number | [ADR 0008](docs/adr/0008-local-vs-api-llm.md), [compare.md](reports/copilot_eval/compare.md) |
 
+Monitoring in Metabase (local, read-only role; questions in `sql/dashboard/`):
+
+![SIGAP monitoring dashboard in Metabase](docs/img/metabase-monitoring.png)
+
 ## What is not proven yet
 
 - Everything above is an offline replay on one BAF variant (Base). A live challenger test on a share of traffic is
@@ -74,7 +78,7 @@ the same shape for trying the code without them.
 | Acquisition, quality | Python, Kaggle API, YAML data contract |
 | Pipeline, warehouse | PySpark, Postgres 16 star schema, SQL |
 | Model, policy | scikit-learn, XGBoost, SHAP, MLflow, NumPy, pandas |
-| Serving, monitoring | FastAPI, Pydantic, Docker, Airflow, GitHub Actions |
+| Serving, monitoring | FastAPI, Pydantic, Docker, Airflow, GitHub Actions, Metabase, GitHub Pages |
 | Fraud ops | n8n, Gmail SMTP, Telegram Bot API, WhatsApp Cloud API |
 | Copilot | LangGraph, MCP, pgvector, sentence-transformers, Claude API, Ollama |
 
